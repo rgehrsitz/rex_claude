@@ -32,9 +32,10 @@ type Conditions struct {
 
 // Condition represents a condition used in a rule.
 type Condition struct {
-	Fact     string      `json:"fact,omitempty"`
-	Operator string      `json:"operator,omitempty"`
-	Value    interface{} `json:"value,omitempty"`
-	All      []Condition `json:"all,omitempty"`
-	Any      []Condition `json:"any,omitempty"`
+	Fact      string      `json:"fact"`
+	Operator  string      `json:"operator"`
+	Value     interface{} `json:"value"`
+	ValueType string      `json:"valueType,omitempty"`
+	All       []Condition `json:"all,omitempty"`
+	Any       []Condition `json:"any,omitempty"`
 }
