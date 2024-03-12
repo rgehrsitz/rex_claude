@@ -9,6 +9,25 @@ import (
 	"rgehrsitz/rex/internal/rules"
 )
 
+// parseAndValidateRules parses a JSON array of rules and validates each rule.
+func ParseAndValidateRules(rulesJSON []byte) ([]*rules.Rule, error) {
+	var ruleDefs []json.RawMessage
+	if err := json.Unmarshal(rulesJSON, &ruleDefs); err != nil {
+		return nil, err
+	}
+
+	var validatedRules []*rules.Rule
+	for _, rJSON := range ruleDefs {
+		rule, err := ParseRule(rJSON)
+		if err != nil {
+			return nil, err
+		}
+		validatedRules = append(validatedRules, rule)
+	}
+
+	return validatedRules, nil
+}
+
 // ParseRule parses a JSON byte array into a Rule struct and validates it.
 func ParseRule(ruleJSON []byte) (*rules.Rule, error) {
 	var rule rules.Rule

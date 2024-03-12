@@ -19,14 +19,28 @@ func main() {
 		panic(err)
 	}
 
-	// Parse and preprocess the rules
-	optimizedRules, err := preprocessor.OptimizeRules(ruleJSON)
+	// Parse and validate the rules
+	validatedRules, err := preprocessor.ParseAndValidateRules(ruleJSON)
 	if err != nil {
 		panic(err)
 	}
 
-	// Output the optimized rules
-	// This could be to a file or stdout, depending on your needs
-	// For simplicity, just printing to stdout here
-	fmt.Println(string(optimizedRules))
+	// Optimze the rules
+	optimizedRules, err := preprocessor.OptimizeRules(validatedRules)
+	if err != nil {
+		panic(err)
+	}
+
+	// Parse and validate the rules
+	bytecode, err := preprocessor.ConvertRulesToBytecode(optimizedRules)
+	if err != nil {
+		panic(err)
+	}
+
+	// Save the bytecode to a same name as inputFilePath, but with .bc extension
+	outputFilePath := fmt.Sprintf("%s.bc", inputFilePath)
+	err = os.WriteFile(outputFilePath, bytecode, 0644)
+	if err != nil {
+		panic(err)
+	}
 }
