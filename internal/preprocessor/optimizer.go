@@ -30,9 +30,30 @@ func OptimizeRules(validatedRules []*rules.Rule) ([]*rules.Rule, error) {
 }
 
 // Placeholder functions for various optimization strategies:
-func prioritizeRules(rules []*rules.Rule) []*rules.Rule {
-	// Implement prioritization logic here.
-	return rules
+func prioritizeRules(rulesToPrioritize []*rules.Rule) []*rules.Rule {
+	// Create a copy of the rules slice to avoid modifying the original
+	prioritizedRules := make([]*rules.Rule, len(rulesToPrioritize))
+	copy(prioritizedRules, rulesToPrioritize)
+
+	// Sort the rules based on their user-assigned priorities in descending order
+	// Use sort.SliceStable for stable sorting.
+	sort.SliceStable(prioritizedRules, func(i, j int) bool {
+		// Handle cases where priority is not defined by treating them as lowest priority.
+		priorityI := getRulePriority(prioritizedRules[i])
+		priorityJ := getRulePriority(prioritizedRules[j])
+
+		return priorityI > priorityJ
+	})
+
+	return prioritizedRules
+}
+
+// getRulePriority returns the priority of a rule, defaulting to 0 if not set.
+func getRulePriority(r *rules.Rule) int {
+	if r != nil {
+		return r.Priority
+	}
+	return 0 // Default priority value if not set
 }
 
 func simplifyConditions(rules []*rules.Rule) []*rules.Rule {
