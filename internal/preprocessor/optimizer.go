@@ -1,7 +1,11 @@
 package preprocessor
 
 import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"rgehrsitz/rex/internal/rules"
+	"sort"
 )
 
 // OptimizeRules optimizes a slice of validated rules.
@@ -50,7 +54,7 @@ func mergeRules(rulesToMerge []*rules.Rule) ([]*rules.Rule, error) {
 	// A map to identify and combine rules with identical conditions
 	mergedRules := make(map[string]*rules.Rule)
 	for _, rule := range rulesToMerge {
-		key := conditionsKey(rule.Conditions)
+		key, _ := conditionsKey(rule.Conditions)
 		if existingRule, found := mergedRules[key]; found {
 			// Merge actions from the current rule into the existing rule
 			existingRule.Event.Actions = append(existingRule.Event.Actions, rule.Event.Actions...)
@@ -71,13 +75,110 @@ func mergeRules(rulesToMerge []*rules.Rule) ([]*rules.Rule, error) {
 }
 
 // conditionsKey generates a unique key based on the conditions of a rule.
-// This example implementation may need to be adapted to ensure that the key
-// is truly unique based on the rule's logic.
-func conditionsKey(conds rules.Conditions) string {
-	// This function should return a string that uniquely represents the conditions.
-	// For now, it returns a placeholder key.
-	if conds.All == nil {
-		return "placeholder_key"
+func conditionsKey(conds rules.Conditions) (string, error) {
+	// Normalize conditions to ensure consistent ordering
+	normalizedConditions, err := normalizeConditions(conds)
+	if err != nil {
+		return "", err
 	}
-	return "placeholder_key"
+
+	// Serialize the normalized conditions to JSON
+	serializedConditions, err := json.Marshal(normalizedConditions)
+	if err != nil {
+		return "", fmt.Errorf("error marshaling conditions: %v", err)
+	}
+
+	// Use SHA256 hashing to create a unique key for the serialized conditions
+	hash := sha256.Sum256(serializedConditions)
+	return fmt.Sprintf("%x", hash), nil
+}
+
+// normalizeConditions ensures that conditions are in a consistent order.
+func normalizeConditions(conds rules.Conditions) (rules.Conditions, error) {
+	// Normalize 'All' conditions
+	sortedAll, err := sortConditions(conds.All)
+	if err != nil {
+		return rules.Conditions{}, err
+	}
+
+	// Normalize 'Any' conditions
+	sortedAny, err := sortConditions(conds.Any)
+	if err != nil {
+		return rules.Conditions{}, err
+	}
+
+	return rules.Conditions{All: sortedAll, Any: sortedAny}, nil
+}
+
+// sortConditions sorts conditions and their nested conditions.
+func sortConditions(conditions []rules.Condition) ([]rules.Condition, error) {
+	// Sort the slice of conditions by some consistent criteria
+	sort.SliceStable(conditions, func(i, j int) bool {
+		// Define a consistent sorting logic.
+		if conditions[i].Fact != conditions[j].Fact {
+			return conditions[i].Fact < conditions[j].Fact
+		}
+		if conditions[i].Operator != conditions[j].Operator {
+			return conditions[i].Operator < conditions[j].Operator
+		}
+		if conditions[i].ValueType != conditions[j].ValueType {
+			return conditions[i].ValueType < conditions[j].ValueType
+		}
+
+		// Custom comparison for Value based on ValueType
+		return compareValues(conditions[i].Value, conditions[j].Value, conditions[i].ValueType)
+	})
+
+	// Recursively sort nested conditions
+	for i, cond := range conditions {
+		if len(cond.All) > 0 || len(cond.Any) > 0 {
+			sortedNestedConds, err := normalizeConditions(rules.Conditions{All: cond.All, Any: cond.Any})
+			if err != nil {
+				return nil, fmt.Errorf("error sorting conditions: %v", err)
+			}
+			conditions[i].All = sortedNestedConds.All
+			conditions[i].Any = sortedNestedConds.Any
+		}
+	}
+
+	return conditions, nil
+}
+
+// compareValues compares two values based on their type.
+func compareValues(v1, v2 interface{}, valueType string) bool {
+	// Perform a type switch to determine how to compare the values
+	switch valueType {
+	case "int":
+		val1, ok1 := v1.(int)
+		val2, ok2 := v2.(int)
+		if !ok1 || !ok2 {
+			return false // Default to false if types do not match expectations
+		}
+		return val1 < val2
+	case "float":
+		val1, ok1 := v1.(float64)
+		val2, ok2 := v2.(float64)
+		if !ok1 || !ok2 {
+			return false // Default to false if types do not match expectations
+		}
+		return val1 < val2
+	case "string":
+		val1, ok1 := v1.(string)
+		val2, ok2 := v2.(string)
+		if !ok1 || !ok2 {
+			return false // Default to false if types do not match expectations
+		}
+		return val1 < val2
+	case "bool":
+		val1, ok1 := v1.(bool)
+		val2, ok2 := v2.(bool)
+		if !ok1 || !ok2 {
+			return false // Default to false if types do not match expectations
+		}
+		// For booleans, false < true
+		return !val1 && val2
+	default:
+		// If ValueType is unknown or not handled, default to false
+		return false
+	}
 }
