@@ -1,4 +1,4 @@
-// pkg/rules/rule.go
+// internal/rules/rule.go
 
 package rules
 
