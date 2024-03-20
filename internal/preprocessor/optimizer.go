@@ -56,9 +56,67 @@ func getRulePriority(r *rules.Rule) int {
 	return 0 // Default priority value if not set
 }
 
-func simplifyConditions(rules []*rules.Rule) []*rules.Rule {
-	// Implement condition simplification logic here.
-	return rules
+func simplifyConditions(rulesToSimplify []*rules.Rule) []*rules.Rule {
+	simplifiedRules := make([]*rules.Rule, len(rulesToSimplify))
+	for i, rule := range rulesToSimplify {
+		simplifiedRule := &rules.Rule{
+			Name:          rule.Name,
+			Priority:      rule.Priority,
+			Conditions:    simplifyRuleConditions(rule.Conditions),
+			Event:         rule.Event,
+			ProducedFacts: rule.ProducedFacts,
+			ConsumedFacts: rule.ConsumedFacts,
+		}
+		simplifiedRules[i] = simplifiedRule
+	}
+	return simplifiedRules
+}
+
+func simplifyRuleConditions(conditions rules.Conditions) rules.Conditions {
+	simplified := rules.Conditions{
+		All: simplifyConditionSlice(conditions.All),
+		Any: simplifyConditionSlice(conditions.Any),
+	}
+	return simplified
+}
+
+func simplifyConditionSlice(conditions []rules.Condition) []rules.Condition {
+	simplified := make([]rules.Condition, 0)
+	for _, cond := range conditions {
+		if isAlwaysTrueCondition(cond) {
+			continue // Skip conditions that are always true
+		}
+		if isAlwaysFalseCondition(cond) {
+			return []rules.Condition{} // If any condition is always false, the entire slice evaluates to false
+		}
+		simplifiedCond := simplifyCondition(cond)
+		simplified = append(simplified, simplifiedCond)
+	}
+	return simplified
+}
+
+func simplifyCondition(condition rules.Condition) rules.Condition {
+	simplified := rules.Condition{
+		Fact:      condition.Fact,
+		Operator:  condition.Operator,
+		Value:     condition.Value,
+		ValueType: condition.ValueType,
+		All:       simplifyConditionSlice(condition.All),
+		Any:       simplifyConditionSlice(condition.Any),
+	}
+	return simplified
+}
+
+func isAlwaysTrueCondition(condition rules.Condition) bool {
+	// Implement logic to identify conditions that are always true
+	// Example: condition.Operator == "==" && condition.Value == condition.Value
+	return false // Placeholder implementation
+}
+
+func isAlwaysFalseCondition(condition rules.Condition) bool {
+	// Implement logic to identify conditions that are always false
+	// Example: condition.Operator == "!=" && condition.Value == condition.Value
+	return false // Placeholder implementation
 }
 
 func precomputeExpressions(rules []*rules.Rule) []*rules.Rule {
