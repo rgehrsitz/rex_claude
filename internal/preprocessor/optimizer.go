@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"rgehrsitz/rex/internal/rules"
 	"sort"
 )
@@ -57,67 +58,143 @@ func getRulePriority(r *rules.Rule) int {
 }
 
 func simplifyConditions(rulesToSimplify []*rules.Rule) []*rules.Rule {
-	simplifiedRules := make([]*rules.Rule, len(rulesToSimplify))
-	for i, rule := range rulesToSimplify {
-		simplifiedRule := &rules.Rule{
-			Name:          rule.Name,
-			Priority:      rule.Priority,
-			Conditions:    simplifyRuleConditions(rule.Conditions),
-			Event:         rule.Event,
-			ProducedFacts: rule.ProducedFacts,
-			ConsumedFacts: rule.ConsumedFacts,
+	simplifiedRules := make([]*rules.Rule, 0, len(rulesToSimplify))
+	for _, rule := range rulesToSimplify {
+		simplifiedConditions := simplifyRuleConditions(rule.Conditions)
+		if !equalConditions(simplifiedConditions, rule.Conditions) {
+			simplifiedRule := &rules.Rule{
+				Name:          rule.Name,
+				Priority:      rule.Priority,
+				Conditions:    simplifiedConditions,
+				Event:         rule.Event,
+				ProducedFacts: rule.ProducedFacts,
+				ConsumedFacts: rule.ConsumedFacts,
+			}
+			simplifiedRules = append(simplifiedRules, simplifiedRule)
+		} else {
+			simplifiedRules = append(simplifiedRules, rule)
 		}
-		simplifiedRules[i] = simplifiedRule
 	}
 	return simplifiedRules
 }
 
 func simplifyRuleConditions(conditions rules.Conditions) rules.Conditions {
 	simplified := rules.Conditions{
-		All: simplifyConditionSlice(conditions.All),
-		Any: simplifyConditionSlice(conditions.Any),
+		All: simplifyAndDedupConditions(conditions.All),
+		Any: simplifyAndDedupConditions(conditions.Any),
 	}
 	return simplified
 }
 
-func simplifyConditionSlice(conditions []rules.Condition) []rules.Condition {
+func simplifyAndDedupConditions(conditions []rules.Condition) []rules.Condition {
 	simplified := make([]rules.Condition, 0)
 	for _, cond := range conditions {
-		if isAlwaysTrueCondition(cond) {
-			continue // Skip conditions that are always true
-		}
-		if isAlwaysFalseCondition(cond) {
-			return []rules.Condition{} // If any condition is always false, the entire slice evaluates to false
-		}
 		simplifiedCond := simplifyCondition(cond)
-		simplified = append(simplified, simplifiedCond)
+		if !containsCondition(simplified, simplifiedCond) {
+			simplified = append(simplified, simplifiedCond)
+		}
 	}
 	return simplified
 }
 
 func simplifyCondition(condition rules.Condition) rules.Condition {
+	// First, recursively simplify any nested conditions.
 	simplified := rules.Condition{
 		Fact:      condition.Fact,
 		Operator:  condition.Operator,
 		Value:     condition.Value,
 		ValueType: condition.ValueType,
-		All:       simplifyConditionSlice(condition.All),
-		Any:       simplifyConditionSlice(condition.Any),
+		All:       simplifyAndDedupConditions(condition.All),
+		Any:       simplifyAndDedupConditions(condition.Any),
 	}
+
+	// Example logical simplification: Identify redundant or overlapping conditions.
+	// This is highly dependent on the logic of your conditions.
+	// Below is a very basic placeholder logic.
+	if canBeSimplified(simplified) {
+		simplified = performLogicalSimplification(simplified)
+	}
+
 	return simplified
 }
-
-func isAlwaysTrueCondition(condition rules.Condition) bool {
-	// Implement logic to identify conditions that are always true
-	// Example: condition.Operator == "==" && condition.Value == condition.Value
-	return false // Placeholder implementation
+func canBeSimplified(condition rules.Condition) bool {
+	// Example logic for a simple case where two "All" conditions might contradict or be redundant.
+	if len(condition.All) >= 2 {
+		// Placeholder logic: check for direct contradictions or redundancies
+		// Real logic should be more comprehensive and based on actual operators and values.
+		for i := 0; i < len(condition.All)-1; i++ {
+			for j := i + 1; j < len(condition.All); j++ {
+				if condition.All[i].Fact == condition.All[j].Fact {
+					return true // Simplistic check; real logic should compare operators and values.
+				}
+			}
+		}
+	}
+	// Check for other patterns that can be simplified.
+	return false
 }
 
-func isAlwaysFalseCondition(condition rules.Condition) bool {
-	// Implement logic to identify conditions that are always false
-	// Example: condition.Operator == "!=" && condition.Value == condition.Value
-	return false // Placeholder implementation
+func performLogicalSimplification(condition rules.Condition) rules.Condition {
+	simplifiedCondition := condition // Start with the original condition
+
+	// Simplify "All" conditions as an example.
+	// This simplistic logic only considers direct redundancy based on the Fact.
+	// A real implementation should consider operators and values.
+	var newAll []rules.Condition
+	seenFacts := make(map[string]bool)
+	for _, cond := range condition.All {
+		if _, seen := seenFacts[cond.Fact]; !seen {
+			newAll = append(newAll, cond)
+			seenFacts[cond.Fact] = true
+		} // Else, it's a redundant condition and can be omitted.
+	}
+	simplifiedCondition.All = newAll
+
+	// Similarly, apply simplification to "Any" conditions and nested conditions.
+
+	return simplifiedCondition
 }
+
+func containsCondition(conditions []rules.Condition, condition rules.Condition) bool {
+	for _, c := range conditions {
+		if equalCondition(c, condition) {
+			return true
+		}
+	}
+	return false
+}
+
+func equalConditions(c1, c2 rules.Conditions) bool {
+	if len(c1.All) != len(c2.All) || len(c1.Any) != len(c2.Any) {
+		return false
+	}
+	for i := range c1.All {
+		if !equalCondition(c1.All[i], c2.All[i]) {
+			return false
+		}
+	}
+	for i := range c1.Any {
+		if !equalCondition(c1.Any[i], c2.Any[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func equalCondition(c1, c2 rules.Condition) bool {
+	return c1.Fact == c2.Fact &&
+		c1.Operator == c2.Operator &&
+		c1.ValueType == c2.ValueType &&
+		reflect.DeepEqual(c1.Value, c2.Value)
+}
+
+// func equalCondition(c1, c2 rules.Condition) bool {
+// 	return c1.Fact == c2.Fact &&
+// 		c1.Operator == c2.Operator &&
+// 		c1.ValueType == c2.ValueType &&
+// 		reflect.DeepEqual(c1.Value, c2.Value) &&
+// 		equalConditions(rules.Conditions{All: c1.All, Any: c1.Any}, rules.Conditions{All: c2.All, Any: c2.Any})
+// }
 
 func precomputeExpressions(rules []*rules.Rule) []*rules.Rule {
 	// Implement precomputation logic here.

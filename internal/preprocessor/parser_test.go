@@ -385,3 +385,138 @@ func TestParseRule_NoConditions(t *testing.T) {
 	// OR
 	// require.NoError(t, err, "Unexpected error parsing rule with no conditions")
 }
+
+func TestParseRule_RedundantConditionsInAllBlock(t *testing.T) {
+	redundantConditionsRuleJSON := `{
+        "conditions": {
+            "all": [
+                {
+                    "fact": "temperature",
+                    "value": 30,
+                    "operator": "greaterThan"
+                },
+                {
+                    "fact": "temperature",
+                    "value": 30,
+                    "operator": "greaterThan"
+                }
+            ]
+        },
+        "action": {
+            "type": "adjustThermostat",
+            "target": "indoor",
+            "value": "decrease"
+        }
+    }`
+
+	_, err := ParseRule([]byte(redundantConditionsRuleJSON))
+	assert.Error(t, err, "Expected an error due to redundant conditions in 'All' block")
+}
+
+func TestParseRule_RedundantConditionsInAnyBlock(t *testing.T) {
+	redundantConditionsRuleJSON := `{
+        "conditions": {
+            "any": [
+                {
+                    "fact": "dayOfWeek",
+                    "value": "Saturday",
+                    "operator": "equal"
+                },
+                {
+                    "fact": "dayOfWeek",
+                    "value": "Saturday",
+                    "operator": "equal"
+                }
+            ]
+        },
+        "action": {
+            "type": "triggerNotification",
+            "target": "user",
+            "value": "It's the weekend!"
+        }
+    }`
+
+	_, err := ParseRule([]byte(redundantConditionsRuleJSON))
+	assert.Error(t, err, "Expected an error due to redundant conditions in 'Any' block")
+}
+
+func TestParseRule_ContradictoryConditionsInAllBlock(t *testing.T) {
+	contradictoryConditionsRuleJSON := `{
+        "conditions": {
+            "all": [
+                {
+                    "fact": "temperature",
+                    "value": 30,
+                    "operator": "lessThan"
+                },
+                {
+                    "fact": "temperature",
+                    "value": 30,
+                    "operator": "greaterThanOrEqual"
+                }
+            ]
+        },
+        "action": {
+            "type": "adjustThermostat",
+            "target": "indoor",
+            "value": "increase"
+        }
+    }`
+
+	_, err := ParseRule([]byte(contradictoryConditionsRuleJSON))
+	assert.Error(t, err, "Expected an error due to contradictory conditions in 'All' block")
+}
+
+func TestParseRule_ContradictoryConditionsInAnyBlock(t *testing.T) {
+	contradictoryConditionsRuleJSON := `{
+        "conditions": {
+            "any": [
+                {
+                    "fact": "lightLevel",
+                    "value": 50,
+                    "operator": "lessThan"
+                },
+                {
+                    "fact": "lightLevel",
+                    "value": 50,
+                    "operator": "greaterThanOrEqual"
+                }
+            ]
+        },
+        "action": {
+            "type": "adjustLighting",
+            "target": "indoor",
+            "value": "increase"
+        }
+    }`
+
+	_, err := ParseRule([]byte(contradictoryConditionsRuleJSON))
+	assert.Error(t, err, "Expected an error due to contradictory conditions in 'Any' block")
+}
+
+func TestParseRule_AmbiguousConditionsInAnyBlock(t *testing.T) {
+	ambiguousConditionsRuleJSON := `{
+        "conditions": {
+            "any": [
+                {
+                    "fact": "temperature",
+                    "value": 30,
+                    "operator": "greaterThan"
+                },
+                {
+                    "fact": "temperature",
+                    "value": 35,
+                    "operator": "greaterThan"
+                }
+            ]
+        },
+        "action": {
+            "type": "adjustThermostat",
+            "target": "indoor",
+            "value": "decrease"
+        }
+    }`
+
+	_, err := ParseRule([]byte(ambiguousConditionsRuleJSON))
+	assert.Error(t, err, "Expected an error due to ambiguous conditions in 'Any' block")
+}

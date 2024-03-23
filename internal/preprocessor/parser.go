@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"rgehrsitz/rex/internal/rules"
 )
 
@@ -64,12 +65,42 @@ func validateConditions(conditions rules.Conditions) error {
 			return err
 		}
 	}
+
+	// Check for redundant conditions
+	if hasRedundantConditions(conditions.All) {
+		return errors.New("redundant conditions found in 'All' block")
+	}
+	if hasRedundantConditions(conditions.Any) {
+		return errors.New("redundant conditions found in 'Any' block")
+	}
+
+	// Check for contradictory conditions
+	if hasContradictoryConditions(conditions.All) {
+		return errors.New("contradictory conditions found in 'All' block")
+	}
+	if hasContradictoryConditions(conditions.Any) {
+		return errors.New("contradictory conditions found in 'Any' block")
+	}
+
+	if hasAmbiguousConditions(conditions.Any) {
+		return errors.New("ambiguous conditions found in 'Any' block")
+	}
+
 	return nil
 }
 
 // validateCondition validates a single Condition struct.
 func validateCondition(condition rules.Condition) error {
+
+	// Infer and assign valueType if not explicitly provided.
+	if condition.ValueType == "" {
+		inferredType := getTypeString(condition.Value)
+		condition.ValueType = inferredType
+	}
+
 	// Skip direct type and operator validation if this condition is just for nesting other conditions
+	//pringt out the condition
+	fmt.Printf("condition: %+v\n", condition)
 	if condition.Fact == "" && (len(condition.All) > 0 || len(condition.Any) > 0) {
 		// Validate nested 'All' conditions
 		if err := validateNestedConditions(condition.All); err != nil {
@@ -109,6 +140,27 @@ func validateCondition(condition rules.Condition) error {
 		return fmt.Errorf("unsupported operation '%s' for type '%s'", canonicalOperator, condition.ValueType)
 	}
 
+	// // Recursively validate nested conditions
+	// if err := validateNestedConditions(condition.All); err != nil {
+	// 	return err
+	// }
+	// if err := validateNestedConditions(condition.Any); err != nil {
+	// 	return err
+	// }
+
+	// Check for contradictory conditions
+	// if hasContradictoryConditions(condition.All) {
+	// 	return errors.New("contradictory conditions found in 'All' block")
+	// }
+	// if hasContradictoryConditions(condition.Any) {
+	// 	return errors.New("contradictory conditions found in 'Any' block")
+	// }
+
+	// Check for ambiguous conditions
+	// if hasAmbiguousConditions(condition.Any) {
+	// 	return errors.New("ambiguous conditions found in 'Any' block")
+	// }
+
 	// Recursively validate nested conditions
 	if err := validateNestedConditions(condition.All); err != nil {
 		return err
@@ -123,14 +175,17 @@ func validateCondition(condition rules.Condition) error {
 // getTypeString returns the type of the value as a string.
 func getTypeString(value interface{}) string {
 	switch value.(type) {
-	case float64:
-		return "float" // Assumes all numbers are parsed as float64 by default; an int can be represented as a float without loss of precision
+	case int, int32, int64:
+		return "int"
+	case float32, float64:
+		return "float"
 	case string:
 		return "string"
 	case bool:
 		return "bool"
 	default:
-		return ""
+		// Log or handle the unexpected type accordingly
+		return "unknown"
 	}
 }
 
@@ -178,4 +233,146 @@ func NormalizeOperator(operator string) string {
 		return canonical
 	}
 	return operator
+}
+
+func hasRedundantConditions(conditions []rules.Condition) bool {
+	// Check for redundant conditions within the same level of nesting
+	for i := 0; i < len(conditions); i++ {
+		//print out the conditions
+		fmt.Printf("condition: %+v\n", conditions[i])
+		for j := i + 1; j < len(conditions); j++ {
+			if equalCondition(conditions[i], conditions[j]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+func hasContradictoryConditions(conditions []rules.Condition) bool {
+	// Check for contradictory conditions within the same level of nesting
+	for i := 0; i < len(conditions); i++ {
+		for j := i + 1; j < len(conditions); j++ {
+			if isContradictory(conditions[i], conditions[j]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isContradictory(cond1, cond2 rules.Condition) bool {
+	// Check if the two conditions have the same fact
+	if cond1.Fact != cond2.Fact {
+		return false
+	}
+
+	// Infer the valueType if not explicitly set
+	valueType := cond1.ValueType
+	if valueType == "" {
+		valueType = getTypeString(cond1.Value)
+	}
+
+	// Check if the two conditions have contradictory operators or values
+	switch cond1.Operator {
+	case "equal":
+		if cond2.Operator == "notEqual" && reflect.DeepEqual(cond1.Value, cond2.Value) {
+			return true
+		}
+	case "notEqual":
+		if cond2.Operator == "equal" && reflect.DeepEqual(cond1.Value, cond2.Value) {
+			return true
+		}
+	case "lessThan":
+		if cond2.Operator == "greaterThanOrEqual" && compareValuesForEquality(cond1.Value, cond2.Value, valueType) {
+			return true
+		}
+	case "lessThanOrEqual":
+		if cond2.Operator == "greaterThan" && compareValuesForEquality(cond1.Value, cond2.Value, valueType) {
+			return true
+		}
+	case "greaterThan":
+		if cond2.Operator == "lessThanOrEqual" && compareValuesForEquality(cond2.Value, cond1.Value, valueType) {
+			return true
+		}
+	case "greaterThanOrEqual":
+		if cond2.Operator == "lessThan" && compareValuesForEquality(cond2.Value, cond1.Value, valueType) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func hasAmbiguousConditions(conditions []rules.Condition) bool {
+	// Create a map to store the facts and their corresponding conditions
+	factConditionsMap := make(map[string][]rules.Condition)
+
+	// Iterate over the conditions and group them by fact
+	for _, cond := range conditions {
+		factConditionsMap[cond.Fact] = append(factConditionsMap[cond.Fact], cond)
+	}
+
+	// Check for ambiguous conditions within each group of conditions with the same fact
+	for _, conditionsWithSameFact := range factConditionsMap {
+		if len(conditionsWithSameFact) > 1 {
+			for i := 0; i < len(conditionsWithSameFact); i++ {
+				for j := i + 1; j < len(conditionsWithSameFact); j++ {
+					if isAmbiguous(conditionsWithSameFact[i], conditionsWithSameFact[j]) {
+						return true
+					}
+				}
+			}
+		}
+	}
+
+	return false
+}
+
+func isAmbiguous(cond1, cond2 rules.Condition) bool {
+	// Check if the two conditions have the same fact, operator, and value type
+	if cond1.Fact == cond2.Fact && cond1.Operator == cond2.Operator && cond1.ValueType == cond2.ValueType {
+		// Check if the two conditions have different values
+		if !reflect.DeepEqual(cond1.Value, cond2.Value) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func compareValuesForEquality(v1, v2 interface{}, valueType string) bool {
+	switch valueType {
+	case "int":
+		// Assuming all numbers are treated as float64 due to JSON unmarshalling.
+		// Convert both to float64 for comparison to handle JSON's default behavior.
+		val1, ok1 := v1.(float64)
+		val2, ok2 := v2.(float64)
+		if !ok1 || !ok2 {
+			return false
+		}
+		return val1 == val2
+	case "float":
+		val1, ok1 := v1.(float64)
+		val2, ok2 := v2.(float64)
+		if !ok1 || !ok2 {
+			return false
+		}
+		return val1 == val2
+	case "string":
+		val1, ok1 := v1.(string)
+		val2, ok2 := v2.(string)
+		if !ok1 || !ok2 {
+			return false
+		}
+		return val1 == val2
+	case "bool":
+		val1, ok1 := v1.(bool)
+		val2, ok2 := v2.(bool)
+		if !ok1 || !ok2 {
+			return false
+		}
+		return val1 == val2
+	default:
+		return false
+	}
 }
