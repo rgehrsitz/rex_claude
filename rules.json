@@ -1,0 +1,27 @@
+[
+  {
+    "name": "SimpleRule",
+    "conditions": {
+      "all": [
+        {
+          "fact": "temperature",
+          "operator": "greaterThan",
+          "value": 30,
+          "valueType": "int"
+        }
+      ],
+      "any": []
+    },
+    "event": {
+      "actions": [
+        {
+          "type": "updateStore",
+          "target": "ac_status",
+          "value": true
+        }
+      ]
+    },
+    "producedFacts": ["ac_status"],
+    "consumedFacts": ["temperature"]
+  }
+]

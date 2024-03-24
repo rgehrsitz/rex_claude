@@ -315,8 +315,22 @@ func (c *Compiler) compileCondition(condition rules.Condition) error {
 func (c *Compiler) compileValue(value interface{}, valueType string) error {
 	switch valueType {
 	case "int":
-		if err := c.emit(LOAD_CONST_INT, value.(int)); err != nil {
-			return err
+		switch v := value.(type) {
+		case int:
+			if err := c.emit(LOAD_CONST_INT, v); err != nil {
+				return err
+			}
+		case float64:
+			// Check if the float64 value is an integer
+			if float64(int64(v)) == v {
+				if err := c.emit(LOAD_CONST_INT, int64(v)); err != nil {
+					return err
+				}
+			} else {
+				return fmt.Errorf("value %v is not an integer", v)
+			}
+		default:
+			return fmt.Errorf("unsupported value type: %T", v)
 		}
 	case "float":
 		if err := c.emit(LOAD_CONST_FLOAT, value.(float64)); err != nil {

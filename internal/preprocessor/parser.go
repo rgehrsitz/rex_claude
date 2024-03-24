@@ -99,8 +99,7 @@ func validateCondition(condition rules.Condition) error {
 	}
 
 	// Skip direct type and operator validation if this condition is just for nesting other conditions
-	//pringt out the condition
-	fmt.Printf("condition: %+v\n", condition)
+	// fmt.Printf("condition: %+v\n", condition)
 	if condition.Fact == "" && (len(condition.All) > 0 || len(condition.Any) > 0) {
 		// Validate nested 'All' conditions
 		if err := validateNestedConditions(condition.All); err != nil {
@@ -174,10 +173,14 @@ func validateCondition(condition rules.Condition) error {
 
 // getTypeString returns the type of the value as a string.
 func getTypeString(value interface{}) string {
-	switch value.(type) {
+	switch v := value.(type) {
 	case int, int32, int64:
 		return "int"
-	case float32, float64:
+	case float64:
+		// Check if the float64 value is an integer
+		if float64(int64(v)) == v {
+			return "int"
+		}
 		return "float"
 	case string:
 		return "string"

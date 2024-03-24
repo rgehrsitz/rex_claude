@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"rgehrsitz/rex/internal/preprocessor"
+	"rgehrsitz/rex/internal/preprocessor/bytecode"
 )
 
 func main() {
@@ -31,16 +32,18 @@ func main() {
 		panic(err)
 	}
 
-	// Parse and validate the rules
-	bytecode, err := preprocessor.ConvertRulesToBytecode(optimizedRules)
+	// Compile rules to bytecode
+	compiler := bytecode.NewCompiler()
+	bytecodeBytes, err := compiler.Compile(optimizedRules)
 	if err != nil {
-		panic(err)
+		fmt.Println("Error compiling rules to bytecode:", err)
+		return
 	}
 
-	// Save the bytecode to a same name as inputFilePath, but with .bc extension
-	outputFilePath := fmt.Sprintf("%s.bc", inputFilePath)
-	err = os.WriteFile(outputFilePath, bytecode, 0644)
+	// Write bytecode to a file
+	err = os.WriteFile("bytecode.bin", bytecodeBytes, 0644)
 	if err != nil {
-		panic(err)
+		fmt.Println("Error writing bytecode to file:", err)
+		return
 	}
 }
