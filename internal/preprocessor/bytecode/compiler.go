@@ -222,15 +222,21 @@ func (c *Compiler) compileConditionList(conditions []rules.Condition, logicalOp 
 }
 
 func (c *Compiler) compileCondition(condition rules.Condition) error {
+	// Print condition details
+	fmt.Printf("Compiling condition: Fact=%s, Operator=%s, Value=%v, ValueType=%s\n",
+		condition.Fact, condition.Operator, condition.Value, condition.ValueType)
+
 	// Compile the fact
 	if err := c.emit(LOAD_FACT, condition.Fact); err != nil {
 		return err
 	}
+	fmt.Printf("Emitted instruction: LOAD_FACT %s\n", condition.Fact)
 
 	// Compile the value
 	if err := c.compileValue(condition.Value, condition.ValueType); err != nil {
 		return err
 	}
+	fmt.Printf("Emitted instructions for value: %v\n", condition.Value)
 
 	// Emit the comparison instruction based on the operator and value type
 	switch condition.ValueType {
@@ -240,26 +246,32 @@ func (c *Compiler) compileCondition(condition rules.Condition) error {
 			if err := c.emit(EQ_INT); err != nil {
 				return err
 			}
+			fmt.Println("Emitted instruction: EQ_INT")
 		case "notEqual":
 			if err := c.emit(NEQ_INT); err != nil {
 				return err
 			}
+			fmt.Println("Emitted instruction: NEQ_INT")
 		case "lessThan":
 			if err := c.emit(LT_INT); err != nil {
 				return err
 			}
+			fmt.Println("Emitted instruction: LT_INT")
 		case "lessThanOrEqual":
 			if err := c.emit(LTE_INT); err != nil {
 				return err
 			}
+			fmt.Println("Emitted instruction: LTE_INT")
 		case "greaterThan":
 			if err := c.emit(GT_INT); err != nil {
 				return err
 			}
+			fmt.Println("Emitted instruction: GT_INT")
 		case "greaterThanOrEqual":
 			if err := c.emit(GTE_INT); err != nil {
 				return err
 			}
+			fmt.Println("Emitted instruction: GTE_INT")
 		default:
 			return fmt.Errorf("unsupported operator for int type: %s", condition.Operator)
 		}

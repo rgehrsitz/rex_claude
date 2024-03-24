@@ -3,10 +3,12 @@
 package runtime
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math"
 	"rgehrsitz/rex/internal/preprocessor/bytecode"
+	"unsafe"
 )
 
 // VM represents the virtual machine that executes bytecode.
@@ -47,12 +49,17 @@ func (vm *VM) Run() error {
 		}
 	}()
 
+	// Skip over the header bytes
+	headerSize := readHeader(vm.bytecode)
+	vm.ip = headerSize
+
 	for vm.ip < len(vm.bytecode) {
 		opcode := bytecode.Opcode(vm.bytecode[vm.ip])
 		vm.ip++
 
 		// Print the current instruction
 		fmt.Printf("IP: %d, Opcode: %s", vm.ip, opcode.String())
+
 		if opcode.HasOperands() {
 			operands, n := decodeOperands(vm.bytecode[vm.ip:])
 			vm.ip += n
@@ -64,7 +71,9 @@ func (vm *VM) Run() error {
 		case bytecode.LOAD_CONST_INT:
 			value, n := decodeInt(vm.bytecode[vm.ip:])
 			vm.ip += n
+			fmt.Printf("Before LOAD_CONST_INT: Stack = %v\n", vm.stack)
 			vm.stack = append(vm.stack, value)
+			fmt.Printf("After LOAD_CONST_INT: Stack = %v\n", vm.stack)
 
 		case bytecode.LOAD_CONST_FLOAT:
 			value, n := decodeFloat(vm.bytecode[vm.ip:])
@@ -79,11 +88,13 @@ func (vm *VM) Run() error {
 		case bytecode.LOAD_FACT:
 			factName, n := decodeString(vm.bytecode[vm.ip:])
 			vm.ip += n
+			fmt.Printf("Before LOAD_FACT: Stack = %v\n", vm.stack)
 			value, ok := vm.facts[factName]
 			if !ok {
 				return fmt.Errorf("undefined fact: %s", factName)
 			}
 			vm.stack = append(vm.stack, value)
+			fmt.Printf("After LOAD_FACT: Stack = %v\n", vm.stack)
 
 		case bytecode.EQ_INT:
 			if err := vm.binaryOp(func(a, b interface{}) interface{} {
@@ -114,11 +125,13 @@ func (vm *VM) Run() error {
 			}
 
 		case bytecode.GT_INT:
+			fmt.Printf("Before GT_INT: Stack = %v\n", vm.stack)
 			if err := vm.binaryOp(func(a, b interface{}) interface{} {
 				return a.(int) > b.(int)
 			}); err != nil {
 				return err
 			}
+			fmt.Printf("After GT_INT: Stack = %v\n", vm.stack)
 
 		case bytecode.GTE_INT:
 			if err := vm.binaryOp(func(a, b interface{}) interface{} {
@@ -325,4 +338,30 @@ func decodeValue(bytecode []byte) (interface{}, int) {
 	default:
 		return nil, 0
 	}
+}
+
+// readHeader reads the header from the bytecode and returns the size of the header.
+func readHeader(bytecode []byte) int {
+	// Read the header fields
+	var header Header
+	err := binary.Read(bytes.NewReader(bytecode), binary.LittleEndian, &header)
+	if err != nil {
+		// Handle error reading header
+		return 0
+	}
+
+	// Debug print: Print the header fields
+	fmt.Printf("Header: Version=%d, Checksum=%d, ConstPoolSize=%d, NumRules=%d\n",
+		header.Version, header.Checksum, header.ConstPoolSize, header.NumRules)
+
+	// Calculate the header size based on the struct size
+	return int(unsafe.Sizeof(header))
+}
+
+type Header struct {
+	Version       uint16 // Version of the bytecode spec
+	Checksum      uint32 // Checksum for integrity verification
+	ConstPoolSize uint16 // Size of the constant pool
+	NumRules      uint16 // Number of rules in the bytecode
+	// ... other metadata fields
 }
