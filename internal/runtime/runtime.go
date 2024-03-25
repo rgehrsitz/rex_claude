@@ -314,27 +314,31 @@ func decodeOperands(bytecode []byte) ([]interface{}, int) {
 	var operands []interface{}
 	var n int
 	for len(bytecode) > 0 {
-		value, m := decodeValue(bytecode)
+		value, m := decodeValue(&bytecode)
 		operands = append(operands, value)
 		n += m
-		bytecode = bytecode[m:]
 	}
 	return operands, n
 }
 
-func decodeValue(bytecode []byte) (interface{}, int) {
-	switch bytecode[0] {
+func decodeValue(bytecode *[]byte) (interface{}, int) {
+	switch (*bytecode)[0] {
 	case 0: // int
-		value, m := decodeInt(bytecode[1:])
+		value, m := decodeInt((*bytecode)[1:])
+		*bytecode = (*bytecode)[m+1:]
 		return value, m + 1
 	case 1: // float
-		value, m := decodeFloat(bytecode[1:])
+		value, m := decodeFloat((*bytecode)[1:])
+		*bytecode = (*bytecode)[m+1:]
 		return value, m + 1
 	case 2: // string
-		value, m := decodeString(bytecode[1:])
+		value, m := decodeString((*bytecode)[1:])
+		*bytecode = (*bytecode)[m+1:]
 		return value, m + 1
 	case 3: // bool
-		return bytecode[1] == 1, 2
+		value := (*bytecode)[1] == 1
+		*bytecode = (*bytecode)[2:]
+		return value, 2
 	default:
 		return nil, 0
 	}

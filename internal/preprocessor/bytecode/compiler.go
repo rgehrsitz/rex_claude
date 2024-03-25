@@ -38,7 +38,9 @@ func (c *Compiler) Compile(rules []*rules.Rule) ([]byte, error) {
 
 	// Resolve label offsets and generate bytecode
 	bytecode := c.resolveLabelOffsets()
-	header := c.generateHeader(len(rules), len(c.instructions))
+
+	// Generate header
+	header := c.generateHeader(len(rules), len(bytecode))
 
 	// Combine header and bytecode
 	return append(header, bytecode...), nil
@@ -168,8 +170,17 @@ func (c *Compiler) replaceOperandAtOffset(instructionOffset, value int) {
 }
 
 func (c *Compiler) compileRule(rule *rules.Rule) error {
+	// Emit a label for the start of the rule
+	c.emitLabel(fmt.Sprintf("rule_%s_start", rule.Name))
+
 	// Compile the rule conditions
 	if err := c.compileConditions(rule.Conditions); err != nil {
+		return err
+	}
+
+	// Emit a JUMP_IF_FALSE instruction to skip the actions if the conditions are not met
+	jumpIfFalseOffset := len(c.instructions)
+	if err := c.emit(JUMP_IF_FALSE, 0); err != nil {
 		return err
 	}
 
@@ -182,6 +193,14 @@ func (c *Compiler) compileRule(rule *rules.Rule) error {
 	if err := c.emit(HALT); err != nil {
 		return err
 	}
+
+	// Calculate the offset for the JUMP_IF_FALSE instruction
+	jumpOffset := len(c.instructions) - jumpIfFalseOffset - 1
+
+	// Update the operand of the JUMP_IF_FALSE instruction with the calculated offset
+	jumpIfFalseInstruction := &c.instructions[jumpIfFalseOffset]
+	jumpIfFalseInstruction.Operands = make([]byte, 4)
+	binary.LittleEndian.PutUint32(jumpIfFalseInstruction.Operands, uint32(jumpOffset))
 
 	return nil
 }
@@ -230,6 +249,7 @@ func (c *Compiler) compileCondition(condition rules.Condition) error {
 	if err := c.emit(LOAD_FACT, condition.Fact); err != nil {
 		return err
 	}
+
 	fmt.Printf("Emitted instruction: LOAD_FACT %s\n", condition.Fact)
 
 	// Compile the value
@@ -238,71 +258,74 @@ func (c *Compiler) compileCondition(condition rules.Condition) error {
 	}
 	fmt.Printf("Emitted instructions for value: %v\n", condition.Value)
 
-	// Emit the comparison instruction based on the operator and value type
+	// Compile the value based on the valueType
 	switch condition.ValueType {
 	case "int":
+		value, ok := condition.Value.(float64)
+		if !ok {
+			return fmt.Errorf("invalid value for int type: %v", condition.Value)
+		}
+		if err := c.emit(LOAD_CONST_INT, int64(value)); err != nil {
+			return err
+		}
+	case "float":
+		value, ok := condition.Value.(float64)
+		if !ok {
+			return fmt.Errorf("invalid value for float type: %v", condition.Value)
+		}
+		if err := c.emit(LOAD_CONST_FLOAT, value); err != nil {
+			return err
+		}
+	case "string":
+		value, ok := condition.Value.(string)
+		if !ok {
+			return fmt.Errorf("invalid value for string type: %v", condition.Value)
+		}
+		if err := c.emit(LOAD_CONST_STRING, value); err != nil {
+			return err
+		}
+	case "bool":
+		value, ok := condition.Value.(bool)
+		if !ok {
+			return fmt.Errorf("invalid value for bool type: %v", condition.Value)
+		}
+		if err := c.emit(LOAD_CONST_BOOL, value); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported value type: %s", condition.ValueType)
+	}
+
+	// Emit the comparison instruction based on the operator and value type
+	switch condition.ValueType {
+	case "int", "float":
 		switch condition.Operator {
 		case "equal":
 			if err := c.emit(EQ_INT); err != nil {
 				return err
 			}
-			fmt.Println("Emitted instruction: EQ_INT")
 		case "notEqual":
 			if err := c.emit(NEQ_INT); err != nil {
 				return err
 			}
-			fmt.Println("Emitted instruction: NEQ_INT")
 		case "lessThan":
 			if err := c.emit(LT_INT); err != nil {
 				return err
 			}
-			fmt.Println("Emitted instruction: LT_INT")
 		case "lessThanOrEqual":
 			if err := c.emit(LTE_INT); err != nil {
 				return err
 			}
-			fmt.Println("Emitted instruction: LTE_INT")
 		case "greaterThan":
 			if err := c.emit(GT_INT); err != nil {
 				return err
 			}
-			fmt.Println("Emitted instruction: GT_INT")
 		case "greaterThanOrEqual":
 			if err := c.emit(GTE_INT); err != nil {
 				return err
 			}
-			fmt.Println("Emitted instruction: GTE_INT")
 		default:
-			return fmt.Errorf("unsupported operator for int type: %s", condition.Operator)
-		}
-	case "float":
-		switch condition.Operator {
-		case "equal":
-			if err := c.emit(EQ_FLOAT); err != nil {
-				return err
-			}
-		case "notEqual":
-			if err := c.emit(NEQ_FLOAT); err != nil {
-				return err
-			}
-		case "lessThan":
-			if err := c.emit(LT_FLOAT); err != nil {
-				return err
-			}
-		case "lessThanOrEqual":
-			if err := c.emit(LTE_FLOAT); err != nil {
-				return err
-			}
-		case "greaterThan":
-			if err := c.emit(GT_FLOAT); err != nil {
-				return err
-			}
-		case "greaterThanOrEqual":
-			if err := c.emit(GTE_FLOAT); err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("unsupported operator for float type: %s", condition.Operator)
+			return fmt.Errorf("unsupported operator for %s type: %s", condition.ValueType, condition.Operator)
 		}
 	case "string":
 		switch condition.Operator {
@@ -316,6 +339,19 @@ func (c *Compiler) compileCondition(condition rules.Condition) error {
 			}
 		default:
 			return fmt.Errorf("unsupported operator for string type: %s", condition.Operator)
+		}
+	case "bool":
+		switch condition.Operator {
+		case "equal":
+			if err := c.emit(EQ_INT); err != nil {
+				return err
+			}
+		case "notEqual":
+			if err := c.emit(NEQ_INT); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported operator for bool type: %s", condition.Operator)
 		}
 	default:
 		return fmt.Errorf("unsupported value type: %s", condition.ValueType)
@@ -375,14 +411,70 @@ func (c *Compiler) compileActions(actions []rules.Action) error {
 
 func (c *Compiler) compileAction(action rules.Action) error {
 	switch action.Type {
-	case "updateStore":
-		if err := c.emit(UPDATE_FACT, action.Target, action.Value); err != nil {
+	case "updateFact":
+		// Emit the UPDATE_FACT instruction
+		if err := c.emit(UPDATE_FACT, action.Target); err != nil {
 			return err
 		}
+
+		// Compile the value based on its type
+		switch value := action.Value.(type) {
+		case int:
+			if err := c.emit(LOAD_CONST_INT, int64(value)); err != nil {
+				return err
+			}
+		case int64:
+			if err := c.emit(LOAD_CONST_INT, value); err != nil {
+				return err
+			}
+		case float64:
+			if err := c.emit(LOAD_CONST_FLOAT, value); err != nil {
+				return err
+			}
+		case string:
+			if err := c.emit(LOAD_CONST_STRING, value); err != nil {
+				return err
+			}
+		case bool:
+			if err := c.emit(LOAD_CONST_BOOL, value); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported value type for updateFact action: %T", value)
+		}
+
 	case "sendMessage":
-		if err := c.emit(SEND_MESSAGE, action.Target, action.Value); err != nil {
+		// Emit the SEND_MESSAGE instruction
+		if err := c.emit(SEND_MESSAGE, action.Target); err != nil {
 			return err
 		}
+
+		// Compile the value based on its type
+		switch value := action.Value.(type) {
+		case int:
+			if err := c.emit(LOAD_CONST_INT, int64(value)); err != nil {
+				return err
+			}
+		case int64:
+			if err := c.emit(LOAD_CONST_INT, value); err != nil {
+				return err
+			}
+		case float64:
+			if err := c.emit(LOAD_CONST_FLOAT, value); err != nil {
+				return err
+			}
+		case string:
+			if err := c.emit(LOAD_CONST_STRING, value); err != nil {
+				return err
+			}
+		case bool:
+			if err := c.emit(LOAD_CONST_BOOL, value); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unsupported value type for sendMessage action: %T", value)
+		}
+
 	default:
 		return fmt.Errorf("unsupported action type: %s", action.Type)
 	}

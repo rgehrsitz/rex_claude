@@ -15,7 +15,7 @@
     "event": {
       "actions": [
         {
-          "type": "updateStore",
+          "type": "updateFact",
           "target": "ac_status",
           "value": true
         }
