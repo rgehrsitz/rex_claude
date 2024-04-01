@@ -46,7 +46,7 @@ func ParseRule(ruleJSON []byte) (*rules.Rule, error) {
 	}
 
 	// Validate the conditions of the rule
-	if err = validateConditions(rule.Conditions); err != nil {
+	if err = validateConditions(&rule.Conditions); err != nil {
 		return nil, err
 	}
 
@@ -54,14 +54,14 @@ func ParseRule(ruleJSON []byte) (*rules.Rule, error) {
 }
 
 // validateConditions recursively validates all conditions in a Conditions struct.
-func validateConditions(conditions rules.Conditions) error {
+func validateConditions(conditions *rules.Conditions) error {
 	for _, cond := range conditions.All {
-		if err := validateCondition(cond); err != nil {
+		if err := validateCondition(&cond); err != nil {
 			return err
 		}
 	}
 	for _, cond := range conditions.Any {
-		if err := validateCondition(cond); err != nil {
+		if err := validateCondition(&cond); err != nil {
 			return err
 		}
 	}
@@ -90,12 +90,28 @@ func validateConditions(conditions rules.Conditions) error {
 }
 
 // validateCondition validates a single Condition struct.
-func validateCondition(condition rules.Condition) error {
+func validateCondition(condition *rules.Condition) error {
 
-	// Infer and assign valueType if not explicitly provided.
+	// Infer and assign ValueType if not explicitly provided
 	if condition.ValueType == "" {
 		inferredType := getTypeString(condition.Value)
 		condition.ValueType = inferredType
+
+		// Typecast the value based on the inferred type
+		switch inferredType {
+		case "int":
+			floatValue, ok := condition.Value.(float64)
+			if !ok {
+				return fmt.Errorf("invalid value for int type: %v", condition.Value)
+			}
+			condition.Value = int64(floatValue)
+		case "float":
+			// No need to typecast, JSON numbers are already unmarshalled as float64
+		case "string", "bool":
+			// No need to typecast, JSON strings and bools are already unmarshalled correctly
+		default:
+			return fmt.Errorf("unsupported value type: %s", inferredType)
+		}
 	}
 
 	// Skip direct type and operator validation if this condition is just for nesting other conditions
@@ -212,7 +228,7 @@ func isOperatorValidForType(operator, valueType string) bool {
 // validateNestedConditions recursively validates a slice of nested conditions.
 func validateNestedConditions(conditions []rules.Condition) error {
 	for _, cond := range conditions {
-		if err := validateCondition(cond); err != nil {
+		if err := validateCondition(&cond); err != nil {
 			return err
 		}
 	}

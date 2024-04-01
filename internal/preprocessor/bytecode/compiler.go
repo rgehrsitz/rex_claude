@@ -123,21 +123,20 @@ func encodeOperands(operands ...interface{}) ([]byte, error) {
 func (c *Compiler) emitLabel(label string) {
 	c.labelOffsets[label] = len(c.instructions)
 	c.emit(LABEL, label)
+	fmt.Printf("Emitted instruction: LABEL %s\n", label)
 }
 
-// resolveLabelOffsets calculates label offsets and replaces label operands with calculated offsets.
-//
-// No parameters.
-// Returns a byte slice.
 func (c *Compiler) resolveLabelOffsets() []byte {
 	var bytecode []byte
 	var labelOffsets = make(map[string]int)
 
 	// Calculate label offsets
 	for i, inst := range c.instructions {
+		fmt.Printf("Instruction: Opcode=%s, Operands=%v\n", inst.Opcode, inst.Operands)
 		if inst.Opcode == LABEL {
 			label := string(inst.Operands)
 			labelOffsets[label] = len(bytecode)
+			fmt.Printf("Resolved label offset for %s: %d\n", label, len(bytecode))
 		} else {
 			bytecode = append(bytecode, byte(inst.Opcode))
 			bytecode = append(bytecode, inst.Operands...)
@@ -171,16 +170,14 @@ func (c *Compiler) replaceOperandAtOffset(instructionOffset, value int) {
 
 func (c *Compiler) compileRule(rule *rules.Rule) error {
 	// Emit a label for the start of the rule
-	c.emitLabel(fmt.Sprintf("rule_%s_start", rule.Name))
+	startLabel := fmt.Sprintf("rule_%s_start", rule.Name)
+	c.emitLabel(startLabel)
+
+	// Emit a label for the end of the rule
+	endLabel := fmt.Sprintf("rule_%s_end", rule.Name)
 
 	// Compile the rule conditions
-	if err := c.compileConditions(rule.Conditions); err != nil {
-		return err
-	}
-
-	// Emit a JUMP_IF_FALSE instruction to skip the actions if the conditions are not met
-	jumpIfFalseOffset := len(c.instructions)
-	if err := c.emit(JUMP_IF_FALSE, 0); err != nil {
+	if err := c.compileConditions(rule.Conditions, endLabel); err != nil {
 		return err
 	}
 
@@ -189,55 +186,56 @@ func (c *Compiler) compileRule(rule *rules.Rule) error {
 		return err
 	}
 
-	// Emit a HALT instruction to indicate the end of the rule
-	if err := c.emit(HALT); err != nil {
-		return err
-	}
-
-	// Calculate the offset for the JUMP_IF_FALSE instruction
-	jumpOffset := len(c.instructions) - jumpIfFalseOffset - 1
-
-	// Update the operand of the JUMP_IF_FALSE instruction with the calculated offset
-	jumpIfFalseInstruction := &c.instructions[jumpIfFalseOffset]
-	jumpIfFalseInstruction.Operands = make([]byte, 4)
-	binary.LittleEndian.PutUint32(jumpIfFalseInstruction.Operands, uint32(jumpOffset))
+	// Emit the end label
+	c.emitLabel(endLabel)
 
 	return nil
 }
 
-func (c *Compiler) compileConditions(conditions rules.Conditions) error {
+func (c *Compiler) compileConditions(conditions rules.Conditions, endLabel string) error {
 	// Compile the "all" conditions
-	if err := c.compileConditionList(conditions.All, AND); err != nil {
-		return err
+	if len(conditions.All) > 0 {
+		if err := c.compileConditionList(conditions.All, endLabel, true); err != nil {
+			return err
+		}
 	}
 
 	// Compile the "any" conditions
-	if err := c.compileConditionList(conditions.Any, OR); err != nil {
-		return err
+	if len(conditions.Any) > 0 {
+		anyLabel := c.generateLabel("any")
+		if err := c.compileConditionList(conditions.Any, anyLabel, false); err != nil {
+			return err
+		}
+		c.emitLabel(anyLabel)
 	}
 
 	return nil
 }
 
-func (c *Compiler) compileConditionList(conditions []rules.Condition, logicalOp Opcode) error {
-	if len(conditions) == 0 {
-		return nil
-	}
-
-	for i, condition := range conditions {
+func (c *Compiler) compileConditionList(conditions []rules.Condition, jumpLabel string, isAll bool) error {
+	for _, condition := range conditions {
 		if err := c.compileCondition(condition); err != nil {
 			return err
 		}
 
-		// Emit the logical operator (AND or OR) between conditions
-		if i < len(conditions)-1 {
-			if err := c.emit(logicalOp); err != nil {
+		// Emit the appropriate jump instruction based on the condition type
+		if isAll {
+			if err := c.emit(JUMP_IF_FALSE, jumpLabel); err != nil {
+				return err
+			}
+		} else {
+			if err := c.emit(JUMP_IF_TRUE, jumpLabel); err != nil {
 				return err
 			}
 		}
 	}
 
 	return nil
+}
+
+func (c *Compiler) generateLabel(prefix string) string {
+	label := fmt.Sprintf("%s_%d", prefix, len(c.instructions))
+	return label
 }
 
 func (c *Compiler) compileCondition(condition rules.Condition) error {
@@ -257,44 +255,6 @@ func (c *Compiler) compileCondition(condition rules.Condition) error {
 		return err
 	}
 	fmt.Printf("Emitted instructions for value: %v\n", condition.Value)
-
-	// Compile the value based on the valueType
-	switch condition.ValueType {
-	case "int":
-		value, ok := condition.Value.(float64)
-		if !ok {
-			return fmt.Errorf("invalid value for int type: %v", condition.Value)
-		}
-		if err := c.emit(LOAD_CONST_INT, int64(value)); err != nil {
-			return err
-		}
-	case "float":
-		value, ok := condition.Value.(float64)
-		if !ok {
-			return fmt.Errorf("invalid value for float type: %v", condition.Value)
-		}
-		if err := c.emit(LOAD_CONST_FLOAT, value); err != nil {
-			return err
-		}
-	case "string":
-		value, ok := condition.Value.(string)
-		if !ok {
-			return fmt.Errorf("invalid value for string type: %v", condition.Value)
-		}
-		if err := c.emit(LOAD_CONST_STRING, value); err != nil {
-			return err
-		}
-	case "bool":
-		value, ok := condition.Value.(bool)
-		if !ok {
-			return fmt.Errorf("invalid value for bool type: %v", condition.Value)
-		}
-		if err := c.emit(LOAD_CONST_BOOL, value); err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("unsupported value type: %s", condition.ValueType)
-	}
 
 	// Emit the comparison instruction based on the operator and value type
 	switch condition.ValueType {
@@ -364,21 +324,17 @@ func (c *Compiler) compileValue(value interface{}, valueType string) error {
 	switch valueType {
 	case "int":
 		switch v := value.(type) {
-		case int:
+		case int64:
 			if err := c.emit(LOAD_CONST_INT, v); err != nil {
 				return err
 			}
 		case float64:
-			// Check if the float64 value is an integer
-			if float64(int64(v)) == v {
-				if err := c.emit(LOAD_CONST_INT, int64(v)); err != nil {
-					return err
-				}
-			} else {
-				return fmt.Errorf("value %v is not an integer", v)
+			// Convert float64 to int64
+			if err := c.emit(LOAD_CONST_INT, int64(v)); err != nil {
+				return err
 			}
 		default:
-			return fmt.Errorf("unsupported value type: %T", v)
+			return fmt.Errorf("unsupported value type for int: %T", v)
 		}
 	case "float":
 		if err := c.emit(LOAD_CONST_FLOAT, value.(float64)); err != nil {
@@ -395,7 +351,6 @@ func (c *Compiler) compileValue(value interface{}, valueType string) error {
 	default:
 		return fmt.Errorf("unsupported value type: %s", valueType)
 	}
-
 	return nil
 }
 
