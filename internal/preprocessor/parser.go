@@ -92,6 +92,19 @@ func validateConditions(conditions *rules.Conditions) error {
 // validateCondition validates a single Condition struct.
 func validateCondition(condition *rules.Condition) error {
 
+	// Skip type inference and typecasting for nested conditions without Fact and Value
+	if condition.Fact == "" && condition.Value == nil {
+		// Validate nested 'All' conditions
+		if err := validateNestedConditions(condition.All); err != nil {
+			return err
+		}
+		// Validate nested 'Any' conditions
+		if err := validateNestedConditions(condition.Any); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	// Infer and assign ValueType if not explicitly provided
 	if condition.ValueType == "" {
 		inferredType := getTypeString(condition.Value)
