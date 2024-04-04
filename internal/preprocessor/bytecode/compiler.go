@@ -152,20 +152,19 @@ func (c *Compiler) resolveLabelOffsets() []byte {
 			if !ok {
 				panic(fmt.Sprintf("undefined label: %s", label))
 			}
-			c.replaceOperandAtOffset(i, offset)
+
+			// Calculate the relative offset from the current instruction
+			currentOffset := c.instructionOffsets[i]
+			relativeOffset := offset - currentOffset
+
+			// Replace the label operand with the relative offset
+			operand := make([]byte, 4)
+			binary.LittleEndian.PutUint32(operand, uint32(relativeOffset))
+			c.instructions[i].Operands = operand
 		}
 	}
 
 	return bytecode
-}
-
-// replaceOperandAtOffset replaces the operand at the specified instruction offset with the given value.
-//
-// Parameters: instructionOffset int, value int
-func (c *Compiler) replaceOperandAtOffset(instructionOffset, value int) {
-	operand := make([]byte, 4)
-	binary.LittleEndian.PutUint32(operand, uint32(value))
-	c.instructions[instructionOffset].Operands = operand
 }
 
 func (c *Compiler) compileRule(rule *rules.Rule) error {
@@ -207,6 +206,26 @@ func (c *Compiler) compileConditions(conditions rules.Conditions, endLabel strin
 			return err
 		}
 		c.emitLabel(anyLabel)
+	}
+
+	// Recursively compile nested conditions
+	for _, condition := range conditions.All {
+		if len(condition.All) > 0 || len(condition.Any) > 0 {
+			nestedEndLabel := c.generateLabel("nested_end")
+			if err := c.compileConditions(rules.Conditions{All: condition.All, Any: condition.Any}, nestedEndLabel); err != nil {
+				return err
+			}
+			c.emitLabel(nestedEndLabel)
+		}
+	}
+	for _, condition := range conditions.Any {
+		if len(condition.All) > 0 || len(condition.Any) > 0 {
+			nestedEndLabel := c.generateLabel("nested_end")
+			if err := c.compileConditions(rules.Conditions{All: condition.All, Any: condition.Any}, nestedEndLabel); err != nil {
+				return err
+			}
+			c.emitLabel(nestedEndLabel)
+		}
 	}
 
 	return nil
