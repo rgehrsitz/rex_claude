@@ -235,6 +235,7 @@ func (c *Compiler) compileConditionList(conditions []rules.Condition, jumpLabel 
 
 func (c *Compiler) generateLabel(prefix string) string {
 	label := fmt.Sprintf("%s_%d", prefix, len(c.instructions))
+	fmt.Printf("Generated label: %s\n", label)
 	return label
 }
 
@@ -324,6 +325,10 @@ func (c *Compiler) compileValue(value interface{}, valueType string) error {
 	switch valueType {
 	case "int":
 		switch v := value.(type) {
+		case int:
+			if err := c.emit(LOAD_CONST_INT, int64(v)); err != nil {
+				return err
+			}
 		case int64:
 			if err := c.emit(LOAD_CONST_INT, v); err != nil {
 				return err
