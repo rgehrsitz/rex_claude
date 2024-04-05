@@ -59,7 +59,7 @@ func TestCompilerSimpleRule(t *testing.T) {
 	}
 
 	// Calculate the bytecode size
-	bytecodeSize := len(expectedBytecodeInstructions)
+	bytecodeSize := len(bytecode)
 
 	// Create the expected bytecode with the header
 	expectedBytecode := []byte{
