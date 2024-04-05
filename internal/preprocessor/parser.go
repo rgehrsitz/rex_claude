@@ -11,7 +11,9 @@ import (
 )
 
 // parseAndValidateRules parses a JSON array of rules and validates each rule.
-func ParseAndValidateRules(rulesJSON []byte) ([]*rules.Rule, error) {
+// ParseAndValidateRules now accepts a RuleEngineContext parameter.
+func ParseAndValidateRules(rulesJSON []byte, context *rules.RuleEngineContext) ([]*rules.Rule, error) {
+	// Function implementation remains mostly unchanged
 	var ruleDefs []json.RawMessage
 	if err := json.Unmarshal(rulesJSON, &ruleDefs); err != nil {
 		return nil, err
@@ -19,7 +21,8 @@ func ParseAndValidateRules(rulesJSON []byte) ([]*rules.Rule, error) {
 
 	var validatedRules []*rules.Rule
 	for _, rJSON := range ruleDefs {
-		rule, err := ParseRule(rJSON)
+		// Pass context to ParseRule
+		rule, err := ParseRule(rJSON, context)
 		if err != nil {
 			return nil, err
 		}
@@ -29,8 +32,8 @@ func ParseAndValidateRules(rulesJSON []byte) ([]*rules.Rule, error) {
 	return validatedRules, nil
 }
 
-// ParseRule parses a JSON byte array into a Rule struct and validates it.
-func ParseRule(ruleJSON []byte) (*rules.Rule, error) {
+// ParseRule now accepts a RuleEngineContext parameter to update consumed facts.
+func ParseRule(ruleJSON []byte, context *rules.RuleEngineContext) (*rules.Rule, error) {
 	var rule rules.Rule
 	err := json.Unmarshal(ruleJSON, &rule)
 	if err != nil {
@@ -50,7 +53,30 @@ func ParseRule(ruleJSON []byte) (*rules.Rule, error) {
 		return nil, err
 	}
 
+	// New logic to update context with consumed facts
+	updateConsumedFacts(&rule, context)
+
 	return &rule, nil
+}
+
+// updateConsumedFacts traverses rule conditions and updates the context with consumed facts.
+func updateConsumedFacts(rule *rules.Rule, context *rules.RuleEngineContext) {
+	traverseConditions(rule.Conditions.All, context)
+	traverseConditions(rule.Conditions.Any, context)
+}
+
+// traverseConditions recursively traverses a slice of conditions,
+// marking each encountered fact as consumed in the context.
+func traverseConditions(conditions []rules.Condition, context *rules.RuleEngineContext) {
+	for _, cond := range conditions {
+		// If the condition specifies a fact, mark it as consumed.
+		if cond.Fact != "" {
+			context.ConsumedFacts[cond.Fact] = true
+		}
+		// Recursively process nested 'All' and 'Any' conditions.
+		traverseConditions(cond.All, context)
+		traverseConditions(cond.Any, context)
+	}
 }
 
 // validateConditions recursively validates all conditions in a Conditions struct.

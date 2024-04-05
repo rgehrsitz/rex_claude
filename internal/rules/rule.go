@@ -39,3 +39,19 @@ type Condition struct {
 	All       []Condition `json:"all,omitempty"`
 	Any       []Condition `json:"any,omitempty"`
 }
+
+// RuleEngineContext holds global or shared data useful across the rules engine.
+type RuleEngineContext struct {
+	FactIndex     map[string]int
+	ConsumedFacts map[string]bool // Tracks which facts are consumed by rules
+	ProducedFacts map[string]bool // Tracks which facts are produced by rules
+}
+
+// NewRuleEngineContext initializes and returns a new RuleEngineContext.
+func NewRuleEngineContext() *RuleEngineContext {
+	return &RuleEngineContext{
+		FactIndex:     make(map[string]int),
+		ConsumedFacts: make(map[string]bool),
+		ProducedFacts: make(map[string]bool),
+	}
+}

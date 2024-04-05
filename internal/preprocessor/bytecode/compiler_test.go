@@ -39,8 +39,11 @@ func TestCompilerSimpleRule(t *testing.T) {
 		ConsumedFacts: []string{"temperature"},
 	}
 
+	// Initialize a new RuleEngineContext
+	context := rules.NewRuleEngineContext()
+
 	// Create a new instance of the compiler
-	compiler := NewCompiler()
+	compiler := NewCompiler(context)
 
 	// Compile the rule
 	bytecode, err := compiler.Compile([]*rules.Rule{rule})

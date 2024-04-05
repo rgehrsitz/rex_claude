@@ -86,8 +86,9 @@ func (op Opcode) HasOperands() bool {
 
 // Instruction represents a single bytecode instruction.
 type Instruction struct {
-	Opcode   Opcode // The operation code
-	Operands []byte // The operands for the instruction
+	Opcode           Opcode // The operation code
+	Operands         []byte // The operands for the instruction
+	BytecodePosition int    // Add this field to track the position in the bytecode
 }
 
 // String returns the string representation of the opcode.

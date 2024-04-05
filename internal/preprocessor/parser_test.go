@@ -1,6 +1,7 @@
 package preprocessor
 
 import (
+	"rgehrsitz/rex/internal/rules"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -29,7 +30,8 @@ func TestParseRule_ValidRule(t *testing.T) {
             "value": "Hello, John!"
         }
     }`
-	rule, err := ParseRule([]byte(validRuleJSON))
+	context := rules.NewRuleEngineContext()
+	rule, err := ParseRule([]byte(validRuleJSON), context)
 	require.NoError(t, err, "Unexpected error")
 	assert.NotNil(t, rule, "Expected a rule, got nil")
 }
@@ -52,7 +54,8 @@ func TestParseRule_InvalidRuleWithMismatchedValueType(t *testing.T) {
             "value": "Hello, John!"
         }
     }`
-	_, err := ParseRule([]byte(invalidRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(invalidRuleJSON), context)
 	assert.Error(t, err, "Expected an error, got nil")
 }
 
@@ -73,7 +76,8 @@ func TestParseRule_InvalidRuleWithUnsupportedOperation(t *testing.T) {
             "value": "Hello, John!"
         }
     }`
-	_, err := ParseRule([]byte(invalidRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(invalidRuleJSON), context)
 	assert.Error(t, err, "Expected an error, got nil")
 }
 
@@ -108,7 +112,8 @@ func TestParseRule_ValidRuleWithNestedConditions(t *testing.T) {
             "value": "Hello, user from New York or Los Angeles!"
         }
     }`
-	rule, err := ParseRule([]byte(validNestedRuleJSON))
+	context := rules.NewRuleEngineContext()
+	rule, err := ParseRule([]byte(validNestedRuleJSON), context)
 	require.NoError(t, err, "Unexpected error")
 	assert.NotNil(t, rule, "Expected a rule, got nil")
 }
@@ -140,7 +145,8 @@ func TestParseRule_ValidRuleWithSupportedOperators(t *testing.T) {
             "value": "Hello, adult non-student!"
         }
     }`
-	rule, err := ParseRule([]byte(validOperatorsRuleJSON))
+	context := rules.NewRuleEngineContext()
+	rule, err := ParseRule([]byte(validOperatorsRuleJSON), context)
 	require.NoError(t, err, "Unexpected error")
 	assert.NotNil(t, rule, "Expected a rule, got nil")
 }
@@ -155,7 +161,8 @@ func TestParseRule_InvalidRuleWithMissingRequiredFields(t *testing.T) {
             ]
         }
     }`
-	_, err := ParseRule([]byte(invalidMissingFieldsRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(invalidMissingFieldsRuleJSON), context)
 	assert.Error(t, err, "Expected an error, got nil")
 }
 
@@ -199,8 +206,8 @@ func TestParseRule_ValidRuleWithDeeplyNestedConditions(t *testing.T) {
             "value": "Bring an umbrella!"
         }
     }`
-
-	rule, err := ParseRule([]byte(nestedRuleJSON))
+	context := rules.NewRuleEngineContext()
+	rule, err := ParseRule([]byte(nestedRuleJSON), context)
 	require.NoError(t, err, "Unexpected error parsing rule with deeply nested conditions")
 	assert.NotNil(t, rule, "Expected a non-nil rule")
 }
@@ -222,8 +229,8 @@ func TestParseRule_InvalidRuleWithUnsupportedOperator(t *testing.T) {
             "value": "Unsupported operator test"
         }
     }`
-
-	_, err := ParseRule([]byte(unsupportedOperatorRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(unsupportedOperatorRuleJSON), context)
 	assert.Error(t, err, "Expected an error due to unsupported operator")
 }
 
@@ -243,8 +250,8 @@ func TestParseRule_InvalidRuleMissingFact(t *testing.T) {
             "value": "Active"
         }
     }`
-
-	_, err := ParseRule([]byte(missingFactRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(missingFactRuleJSON), context)
 	assert.Error(t, err, "Expected an error due to missing 'fact' in a condition")
 }
 
@@ -266,8 +273,8 @@ func TestParseRule_InvalidRuleWithTypeMismatch(t *testing.T) {
             "value": "Invalid age"
         }
     }`
-
-	_, err := ParseRule([]byte(typeMismatchRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(typeMismatchRuleJSON), context)
 	assert.Error(t, err, "Expected an error due to type mismatch between 'valueType' and actual 'value'")
 }
 
@@ -293,8 +300,8 @@ func TestParseRule_NumericTypeHandling(t *testing.T) {
             "value": "Adjusting temperature for optimal comfort."
         }
     }`
-
-	rule, err := ParseRule([]byte(numericTypeRuleJSON))
+	context := rules.NewRuleEngineContext()
+	rule, err := ParseRule([]byte(numericTypeRuleJSON), context)
 	require.NoError(t, err, "Unexpected error parsing rule with numeric values")
 	assert.NotNil(t, rule, "Expected a non-nil rule")
 	// Additional checks can be performed here to ensure that numeric types are correctly interpreted.
@@ -339,8 +346,8 @@ func TestParseRule_ComplexNestedConditions(t *testing.T) {
             "value": "Scheduled activities for the day."
         }
     }`
-
-	rule, err := ParseRule([]byte(complexNestedRuleJSON))
+	context := rules.NewRuleEngineContext()
+	rule, err := ParseRule([]byte(complexNestedRuleJSON), context)
 	require.NoError(t, err, "Unexpected error parsing rule with complex nested conditions")
 	assert.NotNil(t, rule, "Expected a non-nil rule")
 }
@@ -363,8 +370,8 @@ func TestParseRule_UnsupportedValueType(t *testing.T) {
             "value": "Bright and colorful"
         }
     }`
-
-	_, err := ParseRule([]byte(unsupportedValueTypeRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(unsupportedValueTypeRuleJSON), context)
 	assert.Error(t, err, "Expected an error due to unsupported ValueType")
 }
 
@@ -378,8 +385,8 @@ func TestParseRule_NoConditions(t *testing.T) {
             "value": "This rule has no conditions."
         }
     }`
-
-	_, err := ParseRule([]byte(noConditionsRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(noConditionsRuleJSON), context)
 	// Depending on your application's logic, adjust the assertion accordingly.
 	assert.Error(t, err, "Expected an error due to no conditions in rule")
 	// OR
@@ -408,8 +415,8 @@ func TestParseRule_RedundantConditionsInAllBlock(t *testing.T) {
             "value": "decrease"
         }
     }`
-
-	_, err := ParseRule([]byte(redundantConditionsRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(redundantConditionsRuleJSON), context)
 	assert.Error(t, err, "Expected an error due to redundant conditions in 'All' block")
 }
 
@@ -435,8 +442,8 @@ func TestParseRule_RedundantConditionsInAnyBlock(t *testing.T) {
             "value": "It's the weekend!"
         }
     }`
-
-	_, err := ParseRule([]byte(redundantConditionsRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(redundantConditionsRuleJSON), context)
 	assert.Error(t, err, "Expected an error due to redundant conditions in 'Any' block")
 }
 
@@ -462,8 +469,8 @@ func TestParseRule_ContradictoryConditionsInAllBlock(t *testing.T) {
             "value": "increase"
         }
     }`
-
-	_, err := ParseRule([]byte(contradictoryConditionsRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(contradictoryConditionsRuleJSON), context)
 	assert.Error(t, err, "Expected an error due to contradictory conditions in 'All' block")
 }
 
@@ -489,8 +496,8 @@ func TestParseRule_ContradictoryConditionsInAnyBlock(t *testing.T) {
             "value": "increase"
         }
     }`
-
-	_, err := ParseRule([]byte(contradictoryConditionsRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(contradictoryConditionsRuleJSON), context)
 	assert.Error(t, err, "Expected an error due to contradictory conditions in 'Any' block")
 }
 
@@ -516,7 +523,7 @@ func TestParseRule_AmbiguousConditionsInAnyBlock(t *testing.T) {
             "value": "decrease"
         }
     }`
-
-	_, err := ParseRule([]byte(ambiguousConditionsRuleJSON))
+	context := rules.NewRuleEngineContext()
+	_, err := ParseRule([]byte(ambiguousConditionsRuleJSON), context)
 	assert.Error(t, err, "Expected an error due to ambiguous conditions in 'Any' block")
 }

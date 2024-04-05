@@ -5,6 +5,7 @@ import (
 	"os"
 	"rgehrsitz/rex/internal/preprocessor"
 	"rgehrsitz/rex/internal/preprocessor/bytecode"
+	"rgehrsitz/rex/internal/rules" // Make sure to import the package where RuleEngineContext is defined
 )
 
 func main() {
@@ -20,20 +21,23 @@ func main() {
 		panic(err)
 	}
 
-	// Parse and validate the rules
-	validatedRules, err := preprocessor.ParseAndValidateRules(ruleJSON)
+	// Initialize a new RuleEngineContext
+	context := rules.NewRuleEngineContext()
+
+	// Parse and validate the rules with the context
+	validatedRules, err := preprocessor.ParseAndValidateRules(ruleJSON, context)
 	if err != nil {
 		panic(err)
 	}
 
-	// Optimze the rules
-	optimizedRules, err := preprocessor.OptimizeRules(validatedRules)
+	// Assume OptimzeRules is updated to accept a context as well
+	optimizedRules, err := preprocessor.OptimizeRules(validatedRules, context) // Assuming OptimizeRules is updated
 	if err != nil {
 		panic(err)
 	}
 
-	// Compile rules to bytecode
-	compiler := bytecode.NewCompiler()
+	// Compile rules to bytecode, assuming the compiler can accept or use context if necessary
+	compiler := bytecode.NewCompiler(context) // Assuming NewCompiler is updated to accept a context
 	bytecodeBytes, err := compiler.Compile(optimizedRules)
 	if err != nil {
 		fmt.Println("Error compiling rules to bytecode:", err)

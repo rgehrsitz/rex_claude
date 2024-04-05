@@ -10,13 +10,17 @@ import (
 )
 
 // OptimizeRules optimizes a slice of validated rules.
-func OptimizeRules(validatedRules []*rules.Rule) ([]*rules.Rule, error) {
-	// Placeholder for optimized rules - initially just a copy of the validated rules.
+// OptimizeRules now also accepts a pointer to RuleEngineContext
+func OptimizeRules(validatedRules []*rules.Rule, context *rules.RuleEngineContext) ([]*rules.Rule, error) {
+	// Optimization logic remains mostly unchanged
+	// You can now utilize 'context' for optimizations
+	// For example, you might adjust optimizations based on the facts each rule consumes or produces
+
 	optimizedRules := make([]*rules.Rule, len(validatedRules))
 	copy(optimizedRules, validatedRules)
 
-	// Apply various optimization strategies
-	optimizedRules, err := mergeRules(optimizedRules)
+	// Apply various optimization strategies that might utilize 'context'
+	optimizedRules, err := mergeRules(optimizedRules) // Assuming you adjust other functions similarly
 	if err != nil {
 		return nil, err
 	}
@@ -24,8 +28,6 @@ func OptimizeRules(validatedRules []*rules.Rule) ([]*rules.Rule, error) {
 	optimizedRules = simplifyConditions(optimizedRules)
 	optimizedRules = precomputeExpressions(optimizedRules)
 	optimizedRules = analyzeDependencies(optimizedRules)
-
-	// Further optimization steps can be added here.
 
 	return optimizedRules, nil
 }

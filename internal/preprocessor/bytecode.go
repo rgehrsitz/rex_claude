@@ -6,8 +6,10 @@ import (
 )
 
 func ConvertRulesToBytecode(optimizedRules []*rules.Rule) ([]byte, error) {
+	// Initialize a new RuleEngineContext
+	context := rules.NewRuleEngineContext()
 	// Create a new instance of the compiler
-	compiler := bytecode.NewCompiler()
+	compiler := bytecode.NewCompiler(context)
 
 	// Compile the optimized rules using the compiler
 	compiledBytecode, err := compiler.Compile(optimizedRules)

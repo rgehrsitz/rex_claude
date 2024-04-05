@@ -13,17 +13,25 @@ import (
 type Compiler struct {
 	instructions       []Instruction
 	labelOffsets       map[string]int
-	instructionOffsets map[int]int
 	labelCounter       int
+	context            *rules.RuleEngineContext
+	jumpsNeedingLabels []jumpLabelPair
+}
+
+type jumpLabelPair struct {
+	instructionIndex int    // Position in the instructions slice
+	label            string // The label this jump is associated with
 }
 
 // NewCompiler creates a new instance of the bytecode compiler.
-func NewCompiler() *Compiler {
+// NewCompiler creates a new instance of the bytecode compiler.
+func NewCompiler(context *rules.RuleEngineContext) *Compiler {
 	return &Compiler{
 		instructions:       []Instruction{},
 		labelOffsets:       make(map[string]int),
-		instructionOffsets: make(map[int]int),
 		labelCounter:       0,
+		context:            context,
+		jumpsNeedingLabels: make([]jumpLabelPair, 0),
 	}
 }
 
@@ -51,9 +59,20 @@ func (c *Compiler) generateUniqueLabel(base string) string {
 	return label
 }
 
-// emitInstruction appends an instruction to the compiler's list of instructions.
+// emitInstruction appends an instruction to the compiler's list of instructions and updates its bytecode position.
 func (c *Compiler) emitInstruction(opcode Opcode, operands ...byte) {
-	c.instructions = append(c.instructions, Instruction{Opcode: opcode, Operands: operands})
+	// Calculate the current bytecode position as the sum of lengths of all previously emitted instructions.
+	currentBytecodePosition := 0
+	for _, instr := range c.instructions {
+		currentBytecodePosition += 1 + len(instr.Operands) // +1 for the opcode byte itself
+	}
+
+	// Append the new instruction
+	c.instructions = append(c.instructions, Instruction{
+		Opcode:           opcode,
+		Operands:         operands,
+		BytecodePosition: currentBytecodePosition, // Set the bytecode position for this instruction
+	})
 }
 
 // emitLabel emits a label instruction and records its offset.
@@ -78,18 +97,23 @@ func (c *Compiler) compileRule(rule *rules.Rule) error {
 
 // compileConditions compiles conditions (including nested conditions) into bytecode.
 func (c *Compiler) compileConditions(conditions rules.Conditions, endLabel string) error {
-	for _, cond := range conditions.All {
-		if err := c.compileCondition(cond, endLabel, false); err != nil {
+	for i := range conditions.All {
+		// Use the index to obtain a pointer to each condition
+		if err := c.compileCondition(&conditions.All[i], endLabel, false); err != nil {
 			return err
 		}
 	}
 
-	for _, cond := range conditions.Any {
+	for i := range conditions.Any {
+		// Generate a unique label for the action part of the "any" conditions
 		actionLabel := c.generateUniqueLabel("action")
-		if err := c.compileCondition(cond, actionLabel, true); err != nil {
+		// Use the index to obtain a pointer to each condition
+		if err := c.compileCondition(&conditions.Any[i], actionLabel, true); err != nil {
 			return err
 		}
-		c.emitInstruction(JUMP, []byte(endLabel)...) // Jump to end if condition is true
+		// Emit a jump instruction to skip to the end if the condition is true,
+		// since for "any" conditions, we want to perform the action if any condition is true.
+		c.emitInstruction(JUMP, []byte(endLabel)...)
 	}
 
 	return nil
@@ -97,6 +121,8 @@ func (c *Compiler) compileConditions(conditions rules.Conditions, endLabel strin
 
 // compileCondition compiles a single condition or nested block into bytecode.
 func (c *Compiler) compileCondition(condition *rules.Condition, jumpLabel string, jumpIfTrue bool) error {
+	placeholder := []byte{0xFF, 0xFF} // Using 0xFFFF as the placeholder for the label offset
+
 	// Handle nested `all` conditions
 	if len(condition.All) > 0 {
 		for _, nestedCond := range condition.All {
@@ -117,7 +143,12 @@ func (c *Compiler) compileCondition(condition *rules.Condition, jumpLabel string
 				return err
 			}
 		}
-		c.emitInstruction(JUMP, []byte(anyEndLabel)) // Skip remaining conditions if one is true
+		c.emitInstruction(JUMP, placeholder...)
+		// When emitting a jump instruction related to a label
+		c.jumpsNeedingLabels = append(c.jumpsNeedingLabels, jumpLabelPair{
+			instructionIndex: len(c.instructions) - 1, // Index of the jump instruction just added
+			label:            jumpLabel,               // The label the jump is associated with
+		}) // Skip remaining conditions if one is true
 		c.emitLabel(anyEndLabel)
 		return nil // All `any` conditions processed
 	}
@@ -133,9 +164,19 @@ func (c *Compiler) compileCondition(condition *rules.Condition, jumpLabel string
 
 	// Conditional jump based on the result
 	if jumpIfTrue {
-		c.emitInstruction(JUMP_IF_TRUE, []byte(jumpLabel)...)
+		c.emitInstruction(JUMP_IF_TRUE, placeholder...)
+		// When emitting a jump instruction related to a label
+		c.jumpsNeedingLabels = append(c.jumpsNeedingLabels, jumpLabelPair{
+			instructionIndex: len(c.instructions) - 1, // Index of the jump instruction just added
+			label:            jumpLabel,               // The label the jump is associated with
+		})
 	} else {
-		c.emitInstruction(JUMP_IF_FALSE, []byte(jumpLabel)...)
+		c.emitInstruction(JUMP_IF_FALSE, placeholder...)
+		// When emitting a jump instruction related to a label
+		c.jumpsNeedingLabels = append(c.jumpsNeedingLabels, jumpLabelPair{
+			instructionIndex: len(c.instructions) - 1, // Index of the jump instruction just added
+			label:            jumpLabel,               // The label the jump is associated with
+		})
 	}
 
 	return nil
@@ -146,31 +187,40 @@ func (c *Compiler) resolveLabelOffsets() ([]byte, error) {
 	var bytecode []byte
 	for _, instr := range c.instructions {
 		if instr.Opcode == LABEL {
-			// Skip labels as they don't directly translate to bytecode
+			// LABELs don't translate to bytecode, but they mark positions for jumps.
 			continue
 		}
 		bytecode = append(bytecode, byte(instr.Opcode))
-		if instr.Opcode == JUMP || instr.Opcode == JUMP_IF_TRUE || instr.Opcode == JUMP_IF_FALSE {
-			label := string(instr.Operands)
-			offset, exists := c.labelOffsets[label]
-			if !exists {
-				return nil, fmt.Errorf("label %s not defined", label)
-			}
-			// Assuming offsets are stored as 2-byte integers. Adjust according to your bytecode specification.
-			offsetBytes := make([]byte, 2)
-			binary.BigEndian.PutUint16(offsetBytes, uint16(offset))
-			bytecode = append(bytecode, offsetBytes...)
+		bytecode = append(bytecode, instr.Operands...)
+	}
+
+	// Resolve jumps to label offsets based on the BytecodePosition
+	for _, jump := range c.jumpsNeedingLabels {
+		labelOffset, exists := c.labelOffsets[jump.label]
+		if !exists {
+			return nil, fmt.Errorf("label %s not defined", jump.label)
+		}
+		placeholderPosition := c.instructions[jump.instructionIndex].BytecodePosition
+		// Replace placeholder at placeholderPosition with actual labelOffset
+		if len(bytecode) >= placeholderPosition+2 { // Ensure bounds check for 2-byte offset
+			binary.BigEndian.PutUint16(bytecode[placeholderPosition:], uint16(labelOffset))
 		} else {
-			bytecode = append(bytecode, instr.Operands...)
+			return nil, fmt.Errorf("incorrect placeholder position for label %s", jump.label)
 		}
 	}
+
 	return bytecode, nil
 }
 
-// getFactIndex retrieves the index of a fact in the fact table, placeholder for actual implementation
+// getFactIndex retrieves the index of a fact in the fact table.
 func (c *Compiler) getFactIndex(factName string) int {
-	// Implement based on your fact storage mechanism, returning the index of the fact
-	return 0 // Placeholder
+	index, exists := c.context.FactIndex[factName]
+	if !exists {
+		// Logic to handle an undefined fact, could involve assigning a new index,
+		// logging a warning, or other appropriate actions.
+		panic(fmt.Sprintf("Fact '%s' not defined in the context", factName))
+	}
+	return index
 }
 
 // emitLoadConstantInstruction emits instructions to load a constant value of various types.
