@@ -12,6 +12,7 @@ import (
 // Compiler compiles optimized rules into bytecode.
 type Compiler struct {
 	instructions       []Instruction
+	bytecode           []byte
 	labelOffsets       map[string]int
 	labelCounter       int
 	context            *rules.RuleEngineContext
@@ -24,10 +25,10 @@ type jumpLabelPair struct {
 }
 
 // NewCompiler creates a new instance of the bytecode compiler.
-// NewCompiler creates a new instance of the bytecode compiler.
 func NewCompiler(context *rules.RuleEngineContext) *Compiler {
 	return &Compiler{
 		instructions:       []Instruction{},
+		bytecode:           []byte{},
 		labelOffsets:       make(map[string]int),
 		labelCounter:       0,
 		context:            context,
@@ -44,12 +45,11 @@ func (c *Compiler) Compile(rules []*rules.Rule) ([]byte, error) {
 	}
 
 	// After compiling all rules, resolve label offsets to finalize the bytecode
-	bytecode, err := c.resolveLabelOffsets()
-	if err != nil {
+	if err := c.resolveLabelOffsets(); err != nil {
 		return nil, err
 	}
 
-	return bytecode, nil
+	return c.bytecode, nil
 }
 
 // generateUniqueLabel generates a unique label for use in the bytecode.
@@ -61,24 +61,31 @@ func (c *Compiler) generateUniqueLabel(base string) string {
 
 // emitInstruction appends an instruction to the compiler's list of instructions and updates its bytecode position.
 func (c *Compiler) emitInstruction(opcode Opcode, operands ...byte) {
-	// Calculate the current bytecode position as the sum of lengths of all previously emitted instructions.
-	currentBytecodePosition := 0
-	for _, instr := range c.instructions {
-		currentBytecodePosition += 1 + len(instr.Operands) // +1 for the opcode byte itself
-	}
+	// Calculate the current bytecode position based on the actual bytecode size.
+	currentBytecodePosition := len(c.bytecode)
 
-	// Append the new instruction
+	// Append the new instruction to the bytecode.
+	c.bytecode = append(c.bytecode, byte(opcode))
+	c.bytecode = append(c.bytecode, operands...)
+
+	// Append the new instruction to the instructions slice for reference.
 	c.instructions = append(c.instructions, Instruction{
 		Opcode:           opcode,
 		Operands:         operands,
-		BytecodePosition: currentBytecodePosition, // Set the bytecode position for this instruction
+		BytecodePosition: currentBytecodePosition,
 	})
+
+	fmt.Printf("Emitting instruction: Opcode=%d, Operands=%v, BytecodePosition=%d\n", opcode, operands, currentBytecodePosition)
 }
 
 // emitLabel emits a label instruction and records its offset.
 func (c *Compiler) emitLabel(label string) {
-	c.labelOffsets[label] = len(c.instructions)
-	c.emitInstruction(LABEL, []byte(label)...)
+	// The label offset should be the current length of the bytecode slice,
+	// which represents the position in the bytecode where the label is defined.
+	labelOffset := len(c.bytecode)
+
+	c.labelOffsets[label] = labelOffset
+	fmt.Printf("Emitting label: %s at BytecodePosition=%d\n", label, labelOffset)
 }
 
 // compileRule compiles a single rule into bytecode.
@@ -89,6 +96,22 @@ func (c *Compiler) compileRule(rule *rules.Rule) error {
 
 	if err := c.compileConditions(rule.Conditions, endLabel); err != nil {
 		return err
+	}
+
+	// Compile the actions
+	for _, action := range rule.Event.Actions {
+		switch action.Type {
+		case "updateFact":
+			factIndex, err := c.getFactIndex(action.Target)
+			if err != nil {
+				return err
+			}
+			c.emitInstruction(UPDATE_FACT, byte(factIndex))
+			c.emitLoadConstantInstruction(action.Value, "bool")
+		// Add cases for other action types as needed
+		default:
+			return fmt.Errorf("unsupported action type: %s", action.Type)
+		}
 	}
 
 	c.emitLabel(endLabel)
@@ -114,6 +137,11 @@ func (c *Compiler) compileConditions(conditions rules.Conditions, endLabel strin
 		// Emit a jump instruction to skip to the end if the condition is true,
 		// since for "any" conditions, we want to perform the action if any condition is true.
 		c.emitInstruction(JUMP, []byte(endLabel)...)
+		// When emitting a jump instruction related to a label
+		c.jumpsNeedingLabels = append(c.jumpsNeedingLabels, jumpLabelPair{
+			instructionIndex: len(c.instructions) - 1, // Index of the jump instruction just added
+			label:            endLabel,                // The label the jump is associated with
+		})
 	}
 
 	return nil
@@ -121,12 +149,11 @@ func (c *Compiler) compileConditions(conditions rules.Conditions, endLabel strin
 
 // compileCondition compiles a single condition or nested block into bytecode.
 func (c *Compiler) compileCondition(condition *rules.Condition, jumpLabel string, jumpIfTrue bool) error {
-	placeholder := []byte{0xFF, 0xFF} // Using 0xFFFF as the placeholder for the label offset
+	placeholder := []byte{0x00, 0x00} // Using 2 bytes for the placeholder
 
 	// Handle nested `all` conditions
 	if len(condition.All) > 0 {
 		for _, nestedCond := range condition.All {
-			// For `all`, we jump to end if false
 			if err := c.compileCondition(&nestedCond, jumpLabel, false); err != nil {
 				return err
 			}
@@ -138,25 +165,26 @@ func (c *Compiler) compileCondition(condition *rules.Condition, jumpLabel string
 	if len(condition.Any) > 0 {
 		anyEndLabel := c.generateUniqueLabel("any_end")
 		for _, nestedCond := range condition.Any {
-			// For `any`, jump to action if true
 			if err := c.compileCondition(&nestedCond, jumpLabel, true); err != nil {
 				return err
 			}
 		}
 		c.emitInstruction(JUMP, placeholder...)
-		// When emitting a jump instruction related to a label
 		c.jumpsNeedingLabels = append(c.jumpsNeedingLabels, jumpLabelPair{
 			instructionIndex: len(c.instructions) - 1, // Index of the jump instruction just added
 			label:            jumpLabel,               // The label the jump is associated with
-		}) // Skip remaining conditions if one is true
+		})
 		c.emitLabel(anyEndLabel)
 		return nil // All `any` conditions processed
 	}
 
 	// Compile simple condition based on `Fact`, `Operator`, `Value`
-	factIndex := c.getFactIndex(condition.Fact) // Implement based on fact management
+	factIndex, err := c.getFactIndex(condition.Fact) // Check for an error from getFactIndex
+	if err != nil {
+		return err // Return the error if the fact is not found
+	}
 	c.emitInstruction(LOAD_FACT, byte(factIndex))
-	c.emitLoadConstantInstruction(condition.Value) // Adjust for value type
+	c.emitLoadConstantInstruction(condition.Value, condition.ValueType) // Adjust for value type
 
 	// Emit the comparison instruction based on `Operator`
 	comparisonOpcode := c.getComparisonOpcode(condition.Operator)
@@ -165,97 +193,112 @@ func (c *Compiler) compileCondition(condition *rules.Condition, jumpLabel string
 	// Conditional jump based on the result
 	if jumpIfTrue {
 		c.emitInstruction(JUMP_IF_TRUE, placeholder...)
-		// When emitting a jump instruction related to a label
-		c.jumpsNeedingLabels = append(c.jumpsNeedingLabels, jumpLabelPair{
-			instructionIndex: len(c.instructions) - 1, // Index of the jump instruction just added
-			label:            jumpLabel,               // The label the jump is associated with
-		})
 	} else {
 		c.emitInstruction(JUMP_IF_FALSE, placeholder...)
-		// When emitting a jump instruction related to a label
-		c.jumpsNeedingLabels = append(c.jumpsNeedingLabels, jumpLabelPair{
-			instructionIndex: len(c.instructions) - 1, // Index of the jump instruction just added
-			label:            jumpLabel,               // The label the jump is associated with
-		})
 	}
+	// Append jump needing label resolution
+	c.jumpsNeedingLabels = append(c.jumpsNeedingLabels, jumpLabelPair{
+		instructionIndex: len(c.instructions) - 1, // Index of the jump instruction just added
+		label:            jumpLabel,               // The label the jump is associated with
+	})
 
 	return nil
 }
 
 // resolveLabelOffsets replaces label placeholders with actual instruction offsets.
-func (c *Compiler) resolveLabelOffsets() ([]byte, error) {
-	var bytecode []byte
-	for _, instr := range c.instructions {
-		if instr.Opcode == LABEL {
-			// LABELs don't translate to bytecode, but they mark positions for jumps.
-			continue
-		}
-		bytecode = append(bytecode, byte(instr.Opcode))
-		bytecode = append(bytecode, instr.Operands...)
-	}
+func (c *Compiler) resolveLabelOffsets() error {
+	fmt.Println("Starting to resolve labels to offsets.")
+	fmt.Println("Final Instructions before resolving labels:", c.instructions)
+	fmt.Println("Label Offsets:", c.labelOffsets)
 
 	// Resolve jumps to label offsets based on the BytecodePosition
 	for _, jump := range c.jumpsNeedingLabels {
 		labelOffset, exists := c.labelOffsets[jump.label]
 		if !exists {
-			return nil, fmt.Errorf("label %s not defined", jump.label)
+			fmt.Printf("Error: label %s not defined.\n", jump.label)
+			return fmt.Errorf("label %s not defined", jump.label)
 		}
+
 		placeholderPosition := c.instructions[jump.instructionIndex].BytecodePosition
+		fmt.Printf("Resolving jump to label: %s, LabelOffset=%d, PlaceholderPosition=%d\n", jump.label, labelOffset, placeholderPosition)
+
 		// Replace placeholder at placeholderPosition with actual labelOffset
-		if len(bytecode) >= placeholderPosition+2 { // Ensure bounds check for 2-byte offset
-			binary.BigEndian.PutUint16(bytecode[placeholderPosition:], uint16(labelOffset))
-		} else {
-			return nil, fmt.Errorf("incorrect placeholder position for label %s", jump.label)
-		}
+		// binary.LittleEndian.PutUint16(c.bytecode[placeholderPosition:], uint16(labelOffset))
+		c.bytecode[placeholderPosition] = byte(labelOffset >> 8)
+		c.bytecode[placeholderPosition+1] = byte(labelOffset)
 	}
 
-	return bytecode, nil
+	return nil
 }
 
 // getFactIndex retrieves the index of a fact in the fact table.
-func (c *Compiler) getFactIndex(factName string) int {
+func (c *Compiler) getFactIndex(factName string) (int, error) {
 	index, exists := c.context.FactIndex[factName]
 	if !exists {
-		// Logic to handle an undefined fact, could involve assigning a new index,
-		// logging a warning, or other appropriate actions.
-		panic(fmt.Sprintf("Fact '%s' not defined in the context", factName))
+		return -1, fmt.Errorf("fact '%s' not defined in the context", factName)
 	}
-	return index
+	return index, nil
 }
 
 // emitLoadConstantInstruction emits instructions to load a constant value of various types.
-func (c *Compiler) emitLoadConstantInstruction(value interface{}) {
-	switch v := value.(type) {
-	case int:
-		// Convert int to 4-byte array and emit LOAD_CONST_INT
+func (c *Compiler) emitLoadConstantInstruction(value interface{}, valueType string) {
+	switch valueType {
+	case "int":
+		var intValue int
+		switch v := value.(type) {
+		case float64:
+			// Force convert float64 to int if valueType is 'int'
+			intValue = int(v)
+		case int:
+			intValue = v
+		default:
+			panic(fmt.Sprintf("Unsupported conversion: value is %T, expected int", value))
+		}
 		buf := make([]byte, 4)
-		binary.BigEndian.PutUint32(buf, uint32(v))
+		binary.LittleEndian.PutUint32(buf, uint32(intValue))
 		c.emitInstruction(LOAD_CONST_INT, buf...)
-	case float64:
-		// Convert float64 to 8-byte array and emit LOAD_CONST_FLOAT
+
+	case "float":
+		var floatValue float64
+		switch v := value.(type) {
+		case int:
+			// Force convert int to float64 if valueType is 'float'
+			floatValue = float64(v)
+		case float64:
+			floatValue = v
+		default:
+			panic(fmt.Sprintf("Unsupported conversion: value is %T, expected float", value))
+		}
 		buf := make([]byte, 8)
-		binary.BigEndian.PutUint64(buf, math.Float64bits(v))
+		binary.LittleEndian.PutUint64(buf, math.Float64bits(floatValue))
 		c.emitInstruction(LOAD_CONST_FLOAT, buf...)
-	case string:
-		// Assume strings are UTF-8 encoded and fit in your bytecode design.
-		// You might need to precede the string with its length or end with a null terminator based on your design.
-		strBytes := []byte(v)
-		length := len(strBytes)
-		if length > 255 {
-			// Simplified: Assuming a single byte to denote length, adjust as necessary.
+
+	case "string":
+		strValue, ok := value.(string)
+		if !ok {
+			panic(fmt.Sprintf("Unsupported conversion: value is %T, expected string", value))
+		}
+		strBytes := []byte(strValue)
+		// Assuming a single byte to denote length for simplicity, adjust as necessary.
+		if len(strBytes) > 255 {
 			panic("String value too long for LOAD_CONST_STRING instruction")
 		}
 		// Emit length followed by string bytes
-		c.emitInstruction(LOAD_CONST_STRING, append([]byte{byte(length)}, strBytes...)...)
-	case bool:
-		// Convert bool to byte and emit LOAD_CONST_BOOL
+		c.emitInstruction(LOAD_CONST_STRING, append([]byte{byte(len(strBytes))}, strBytes...)...)
+
+	case "bool":
+		boolValue, ok := value.(bool)
+		if !ok {
+			panic(fmt.Sprintf("Unsupported conversion: value is %T, expected bool", value))
+		}
 		var buf byte = 0x00
-		if v {
+		if boolValue {
 			buf = 0x01
 		}
 		c.emitInstruction(LOAD_CONST_BOOL, buf)
+
 	default:
-		panic(fmt.Sprintf("Unsupported constant type: %T", value))
+		panic(fmt.Sprintf("Unsupported valueType: '%s'", valueType))
 	}
 }
 

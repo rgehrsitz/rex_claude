@@ -30,7 +30,23 @@ func main() {
 		panic(err)
 	}
 
-	// Assume OptimzeRules is updated to accept a context as well
+	// **Insert the new code here to update the context with all facts from validatedRules**
+	for _, rule := range validatedRules {
+		for _, fact := range rule.ConsumedFacts {
+			if _, exists := context.FactIndex[fact]; !exists {
+				index := len(context.FactIndex) // Assign a new index
+				context.FactIndex[fact] = index
+			}
+		}
+		for _, fact := range rule.ProducedFacts {
+			if _, exists := context.FactIndex[fact]; !exists {
+				index := len(context.FactIndex) // Assign a new index
+				context.FactIndex[fact] = index
+			}
+		}
+	}
+
+	// OptimzeRules is assumed to be updated to accept a context as well
 	optimizedRules, err := preprocessor.OptimizeRules(validatedRules, context) // Assuming OptimizeRules is updated
 	if err != nil {
 		panic(err)
