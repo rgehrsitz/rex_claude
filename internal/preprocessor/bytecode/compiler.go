@@ -75,7 +75,9 @@ func (c *Compiler) emitInstruction(opcode Opcode, operands ...byte) {
 		BytecodePosition: currentBytecodePosition,
 	})
 
-	fmt.Printf("Emitting instruction: Opcode=%d, Operands=%v, BytecodePosition=%d\n", opcode, operands, currentBytecodePosition)
+	fmt.Printf("Emitted instruction: Opcode=%d (%s), Operands=%v, BytecodePosition=%d\n",
+		opcode, opcode.String(), operands, currentBytecodePosition)
+
 }
 
 // emitLabel emits a label instruction and records its offset.
@@ -85,7 +87,8 @@ func (c *Compiler) emitLabel(label string) {
 	labelOffset := len(c.bytecode)
 
 	c.labelOffsets[label] = labelOffset
-	fmt.Printf("Emitting label: %s at BytecodePosition=%d\n", label, labelOffset)
+	fmt.Printf("Emitted label: %s, BytecodePosition=%d\n", label, labelOffset)
+
 }
 
 // compileRule compiles a single rule into bytecode.
@@ -183,6 +186,8 @@ func (c *Compiler) compileCondition(condition *rules.Condition, jumpLabel string
 	if err != nil {
 		return err // Return the error if the fact is not found
 	}
+	fmt.Printf("Compiling condition for fact '%s' with index %d\n", condition.Fact, factIndex)
+
 	c.emitInstruction(LOAD_FACT, byte(factIndex))
 	c.emitLoadConstantInstruction(condition.Value, condition.ValueType) // Adjust for value type
 
@@ -196,6 +201,14 @@ func (c *Compiler) compileCondition(condition *rules.Condition, jumpLabel string
 	} else {
 		c.emitInstruction(JUMP_IF_FALSE, placeholder...)
 	}
+
+	// After emitting JUMP_IF_FALSE or JUMP_IF_TRUE
+	jumpType := "JUMP_IF_FALSE"
+	if jumpIfTrue {
+		jumpType = "JUMP_IF_TRUE"
+	}
+	fmt.Printf("Emitted conditional jump: %s with placeholder at BytecodePosition=%d\n", jumpType, len(c.bytecode)-2)
+
 	// Append jump needing label resolution
 	c.jumpsNeedingLabels = append(c.jumpsNeedingLabels, jumpLabelPair{
 		instructionIndex: len(c.instructions) - 1, // Index of the jump instruction just added
@@ -220,12 +233,13 @@ func (c *Compiler) resolveLabelOffsets() error {
 		}
 
 		placeholderPosition := c.instructions[jump.instructionIndex].BytecodePosition
-		fmt.Printf("Resolving jump to label: %s, LabelOffset=%d, PlaceholderPosition=%d\n", jump.label, labelOffset, placeholderPosition)
+		fmt.Printf("Resolving label '%s': LabelOffset=%d, PlaceholderBytecodePosition=%d\n",
+			jump.label, labelOffset, placeholderPosition)
 
 		// Replace placeholder at placeholderPosition with actual labelOffset
 		// binary.LittleEndian.PutUint16(c.bytecode[placeholderPosition:], uint16(labelOffset))
-		c.bytecode[placeholderPosition] = byte(labelOffset >> 8)
-		c.bytecode[placeholderPosition+1] = byte(labelOffset)
+		binary.LittleEndian.PutUint16(c.bytecode[placeholderPosition:], uint16(labelOffset-placeholderPosition-2))
+
 	}
 
 	return nil
