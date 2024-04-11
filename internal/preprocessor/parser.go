@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"reflect"
 	"rgehrsitz/rex/internal/rules"
+
+	"github.com/rs/zerolog/log"
 )
 
 // parseAndValidateRules parses a JSON array of rules and validates each rule.
@@ -16,7 +18,7 @@ func ParseAndValidateRules(rulesJSON []byte, context *rules.RuleEngineContext) (
 	// Function implementation remains mostly unchanged
 	var ruleDefs []json.RawMessage
 	if err := json.Unmarshal(rulesJSON, &ruleDefs); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal rules JSON: %w", err)
 	}
 
 	var validatedRules []*rules.Rule
@@ -37,15 +39,14 @@ func ParseRule(ruleJSON []byte, context *rules.RuleEngineContext) (*rules.Rule, 
 	var rule rules.Rule
 	err := json.Unmarshal(ruleJSON, &rule)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse rule JSON: %w", err)
 	}
 
-	// Debug statement to print out the parsed JSON
-	//fmt.Printf("Parsed JSON: %+v\n", rule)
+	log.Debug().Interface("rule", rule).Msg("Parsed rule JSON")
 
 	// Validate that the rule has conditions
 	if len(rule.Conditions.All) == 0 && len(rule.Conditions.Any) == 0 {
-		return nil, errors.New("a rule must have at least one condition")
+		return nil, fmt.Errorf("a rule must have at least one condition")
 	}
 
 	// Validate the conditions of the rule
@@ -55,6 +56,7 @@ func ParseRule(ruleJSON []byte, context *rules.RuleEngineContext) (*rules.Rule, 
 
 	// New logic to update context with consumed facts
 	updateConsumedFacts(&rule, context)
+	log.Debug().Msg("Successfully updated consumed facts in context")
 
 	return &rule, nil
 }
@@ -154,7 +156,6 @@ func validateCondition(condition *rules.Condition) error {
 	}
 
 	// Skip direct type and operator validation if this condition is just for nesting other conditions
-	// fmt.Printf("condition: %+v\n", condition)
 	if condition.Fact == "" && (len(condition.All) > 0 || len(condition.Any) > 0) {
 		// Validate nested 'All' conditions
 		if err := validateNestedConditions(condition.All); err != nil {
@@ -296,16 +297,20 @@ func NormalizeOperator(operator string) string {
 func hasRedundantConditions(conditions []rules.Condition) bool {
 	// Check for redundant conditions within the same level of nesting
 	for i := 0; i < len(conditions); i++ {
-		//print out the conditions
-		fmt.Printf("condition: %+v\n", conditions[i])
+		// Log out the conditions using zerolog at the debug level
+		log.Debug().Interface("condition", conditions[i]).Msg("Checking condition for redundancy")
+
 		for j := i + 1; j < len(conditions); j++ {
 			if equalCondition(conditions[i], conditions[j]) {
+				// If a redundant condition is found, it might be worth logging at info or warn level
+				log.Warn().Msgf("Redundant condition found: %+v", conditions[i])
 				return true
 			}
 		}
 	}
 	return false
 }
+
 func hasContradictoryConditions(conditions []rules.Condition) bool {
 	// Check for contradictory conditions within the same level of nesting
 	for i := 0; i < len(conditions); i++ {

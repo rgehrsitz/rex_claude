@@ -1,15 +1,16 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"rgehrsitz/rex/internal/runtime"
+
+	"github.com/rs/zerolog/log"
 )
 
 func main() {
 	// Check if a file path is provided as an argument
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: runtime <bytecode_file>")
+		log.Error().Msg("Usage: runtime <bytecode_file>")
 		return
 	}
 
@@ -17,7 +18,7 @@ func main() {
 	bytecodeFilePath := os.Args[1]
 	bytecodeBytes, err := os.ReadFile(bytecodeFilePath)
 	if err != nil {
-		fmt.Println("Error reading bytecode file:", err)
+		log.Error().Err(err).Msg("Error reading bytecode file")
 		return
 	}
 
@@ -25,9 +26,10 @@ func main() {
 	vm := runtime.NewVM(bytecodeBytes)
 	err = vm.Run()
 	if err != nil {
-		fmt.Println("Error running bytecode:", err)
+		log.Error().Err(err).Msg("Error running bytecode")
 		return
 	}
 
-	fmt.Println("Bytecode execution completed successfully.")
+	log.Info().Msg("Bytecode execution completed successfully.")
+
 }

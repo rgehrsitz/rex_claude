@@ -57,6 +57,7 @@ func (c *Compiler) Compile(rules []*rules.Rule) ([]byte, error) {
 // generateUniqueLabel generates a unique label for use in the bytecode.
 func (c *Compiler) generateUniqueLabel(base string) string {
 	label := fmt.Sprintf("%s_%d", base, c.labelCounter)
+	log.Debug().Str("Label", label).Msg("Generated unique label")
 	c.labelCounter++
 	return label
 }

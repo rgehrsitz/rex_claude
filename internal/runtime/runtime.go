@@ -9,6 +9,8 @@ import (
 	"math"
 	"rgehrsitz/rex/internal/preprocessor/bytecode"
 	"unsafe"
+
+	"github.com/rs/zerolog/log"
 )
 
 // VM represents the virtual machine that executes bytecode.
@@ -58,7 +60,7 @@ func (vm *VM) Run() error {
 		vm.ip++
 
 		// Print the current instruction
-		fmt.Printf("IP: %d, Opcode: %s", vm.ip, opcode.String())
+		log.Debug().Int("IP", vm.ip).Str("Opcode", opcode.String()).Msg("Processing instruction")
 
 		if opcode.HasOperands() {
 			operands, n := decodeOperands(vm.bytecode[vm.ip:])
@@ -71,9 +73,9 @@ func (vm *VM) Run() error {
 		case bytecode.LOAD_CONST_INT:
 			value, n := decodeInt(vm.bytecode[vm.ip:])
 			vm.ip += n
-			fmt.Printf("Before LOAD_CONST_INT: Stack = %v\n", vm.stack)
+			log.Debug().Interface("StackBefore", vm.stack).Msg("Before LOAD_CONST_INT")
 			vm.stack = append(vm.stack, value)
-			fmt.Printf("After LOAD_CONST_INT: Stack = %v\n", vm.stack)
+			log.Debug().Interface("StackAfter", vm.stack).Msg("After LOAD_CONST_INT")
 
 		case bytecode.LOAD_CONST_FLOAT:
 			value, n := decodeFloat(vm.bytecode[vm.ip:])
@@ -355,8 +357,12 @@ func readHeader(bytecode []byte) int {
 	}
 
 	// Debug print: Print the header fields
-	fmt.Printf("Header: Version=%d, Checksum=%d, ConstPoolSize=%d, NumRules=%d\n",
-		header.Version, header.Checksum, header.ConstPoolSize, header.NumRules)
+	log.Debug().
+		Uint16("Version", header.Version).
+		Uint32("Checksum", header.Checksum).
+		Uint16("ConstPoolSize", header.ConstPoolSize).
+		Uint16("NumRules", header.NumRules).
+		Msg("Bytecode header details")
 
 	// Calculate the header size based on the struct size
 	return int(unsafe.Sizeof(header))
