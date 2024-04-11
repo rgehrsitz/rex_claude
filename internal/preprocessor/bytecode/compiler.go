@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"math"
 	"rgehrsitz/rex/internal/rules"
+
+	"github.com/rs/zerolog/log"
 )
 
 // Compiler compiles optimized rules into bytecode.
@@ -75,8 +77,12 @@ func (c *Compiler) emitInstruction(opcode Opcode, operands ...byte) {
 		BytecodePosition: currentBytecodePosition,
 	})
 
-	fmt.Printf("Emitted instruction: Opcode=%d (%s), Operands=%v, BytecodePosition=%d\n",
-		opcode, opcode.String(), operands, currentBytecodePosition)
+	log.Debug().
+		Int("Opcode", int(opcode)).
+		Str("Operation", opcode.String()).
+		Interface("Operands", operands).
+		Int("BytecodePosition", currentBytecodePosition).
+		Msg("Emitted instruction")
 
 }
 
@@ -87,12 +93,19 @@ func (c *Compiler) emitLabel(label string) {
 	labelOffset := len(c.bytecode)
 
 	c.labelOffsets[label] = labelOffset
-	fmt.Printf("Emitted label: %s, BytecodePosition=%d\n", label, labelOffset)
 
+	log.Debug().
+		Str("Label", label).
+		Int("BytecodePosition", labelOffset).
+		Msg("Emitted label")
 }
 
 // compileRule compiles a single rule into bytecode.
 func (c *Compiler) compileRule(rule *rules.Rule) error {
+	log.Debug().
+		Str("RuleID", rule.Name).
+		Msg("Starting compilation of rule")
+
 	startLabel := c.generateUniqueLabel("rule_start")
 	endLabel := c.generateUniqueLabel("rule_end")
 	c.emitLabel(startLabel)
@@ -113,11 +126,19 @@ func (c *Compiler) compileRule(rule *rules.Rule) error {
 			c.emitLoadConstantInstruction(action.Value, "bool")
 		// Add cases for other action types as needed
 		default:
+			log.Error().
+				Str("ActionType", action.Type).
+				Msg("Unsupported action type encountered")
+
 			return fmt.Errorf("unsupported action type: %s", action.Type)
 		}
 	}
 
 	c.emitLabel(endLabel)
+	log.Info().
+		Int("BytecodeSize", len(c.bytecode)).
+		Msg("Compilation completed successfully")
+
 	return nil
 }
 
@@ -186,7 +207,11 @@ func (c *Compiler) compileCondition(condition *rules.Condition, jumpLabel string
 	if err != nil {
 		return err // Return the error if the fact is not found
 	}
-	fmt.Printf("Compiling condition for fact '%s' with index %d\n", condition.Fact, factIndex)
+
+	log.Debug().
+		Str("Fact", condition.Fact).
+		Int("FactIndex", factIndex).
+		Msg("Compiling condition for fact")
 
 	c.emitInstruction(LOAD_FACT, byte(factIndex))
 	c.emitLoadConstantInstruction(condition.Value, condition.ValueType) // Adjust for value type
@@ -207,7 +232,11 @@ func (c *Compiler) compileCondition(condition *rules.Condition, jumpLabel string
 	if jumpIfTrue {
 		jumpType = "JUMP_IF_TRUE"
 	}
-	fmt.Printf("Emitted conditional jump: %s with placeholder at BytecodePosition=%d\n", jumpType, len(c.bytecode)-2)
+
+	log.Debug().
+		Str("JumpType", jumpType).
+		Int("PlaceholderBytecodePosition", len(c.bytecode)-2).
+		Msg("Emitted conditional jump with placeholder")
 
 	// Append jump needing label resolution
 	c.jumpsNeedingLabels = append(c.jumpsNeedingLabels, jumpLabelPair{
@@ -220,21 +249,33 @@ func (c *Compiler) compileCondition(condition *rules.Condition, jumpLabel string
 
 // resolveLabelOffsets replaces label placeholders with actual instruction offsets.
 func (c *Compiler) resolveLabelOffsets() error {
-	fmt.Println("Starting to resolve labels to offsets.")
-	fmt.Println("Final Instructions before resolving labels:", c.instructions)
-	fmt.Println("Label Offsets:", c.labelOffsets)
+	log.Info().Msg("Starting to resolve labels to offsets")
+
+	log.Debug().
+		Interface("FinalInstructions", c.instructions).
+		Msg("Final Instructions before resolving labels")
+
+	log.Debug().
+		Interface("LabelOffsets", c.labelOffsets).
+		Msg("Label Offsets")
 
 	// Resolve jumps to label offsets based on the BytecodePosition
 	for _, jump := range c.jumpsNeedingLabels {
 		labelOffset, exists := c.labelOffsets[jump.label]
 		if !exists {
-			fmt.Printf("Error: label %s not defined.\n", jump.label)
+			log.Error().
+				Str("Label", jump.label).
+				Msg("Error: label not defined")
+
 			return fmt.Errorf("label %s not defined", jump.label)
 		}
 
 		placeholderPosition := c.instructions[jump.instructionIndex].BytecodePosition
-		fmt.Printf("Resolving label '%s': LabelOffset=%d, PlaceholderBytecodePosition=%d\n",
-			jump.label, labelOffset, placeholderPosition)
+		log.Debug().
+			Str("Label", jump.label).
+			Int("LabelOffset", labelOffset).
+			Int("PlaceholderBytecodePosition", placeholderPosition).
+			Msg("Resolving label to bytecode position")
 
 		// Replace placeholder at placeholderPosition with actual labelOffset
 		// binary.LittleEndian.PutUint16(c.bytecode[placeholderPosition:], uint16(labelOffset))
@@ -266,7 +307,11 @@ func (c *Compiler) emitLoadConstantInstruction(value interface{}, valueType stri
 		case int:
 			intValue = v
 		default:
-			panic(fmt.Sprintf("Unsupported conversion: value is %T, expected int", value))
+			log.Fatal().
+				Str("ExpectedType", "int").
+				Interface("ActualType", value).
+				Msg("Unsupported conversion")
+
 		}
 		buf := make([]byte, 4)
 		binary.LittleEndian.PutUint32(buf, uint32(intValue))
@@ -281,7 +326,10 @@ func (c *Compiler) emitLoadConstantInstruction(value interface{}, valueType stri
 		case float64:
 			floatValue = v
 		default:
-			panic(fmt.Sprintf("Unsupported conversion: value is %T, expected float", value))
+			log.Fatal().
+				Str("Type", fmt.Sprintf("%T", value)).
+				Msg("Unsupported conversion: value type not expected for float")
+
 		}
 		buf := make([]byte, 8)
 		binary.LittleEndian.PutUint64(buf, math.Float64bits(floatValue))
@@ -290,8 +338,11 @@ func (c *Compiler) emitLoadConstantInstruction(value interface{}, valueType stri
 	case "string":
 		strValue, ok := value.(string)
 		if !ok {
-			panic(fmt.Sprintf("Unsupported conversion: value is %T, expected string", value))
+			log.Fatal().
+				Str("ValueType", fmt.Sprintf("%T", value)).
+				Msg("Unsupported conversion: value is not a string as expected")
 		}
+
 		strBytes := []byte(strValue)
 		// Assuming a single byte to denote length for simplicity, adjust as necessary.
 		if len(strBytes) > 255 {
@@ -303,7 +354,9 @@ func (c *Compiler) emitLoadConstantInstruction(value interface{}, valueType stri
 	case "bool":
 		boolValue, ok := value.(bool)
 		if !ok {
-			panic(fmt.Sprintf("Unsupported conversion: value is %T, expected bool", value))
+			log.Fatal().
+				Str("ValueType", fmt.Sprintf("%T", value)).
+				Msg("Unsupported conversion: value is not a bool as expected")
 		}
 		var buf byte = 0x00
 		if boolValue {

@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"rgehrsitz/rex/internal/rules"
 	"sort"
+
+	"github.com/rs/zerolog/log"
 )
 
 // OptimizeRules optimizes a slice of validated rules.
@@ -15,6 +17,7 @@ func OptimizeRules(validatedRules []*rules.Rule, context *rules.RuleEngineContex
 	// Optimization logic remains mostly unchanged
 	// You can now utilize 'context' for optimizations
 	// For example, you might adjust optimizations based on the facts each rule consumes or produces
+	log.Debug().Msg("Starting rule optimization")
 
 	optimizedRules := make([]*rules.Rule, len(validatedRules))
 	copy(optimizedRules, validatedRules)
@@ -28,6 +31,9 @@ func OptimizeRules(validatedRules []*rules.Rule, context *rules.RuleEngineContex
 	optimizedRules = simplifyConditions(optimizedRules)
 	optimizedRules = precomputeExpressions(optimizedRules)
 	optimizedRules = analyzeDependencies(optimizedRules)
+
+	log.Info().Msg("Rule optimization completed successfully")
+	log.Debug().Int("originalCount", len(validatedRules)).Int("optimizedCount", len(optimizedRules)).Msg("Rules merged")
 
 	return optimizedRules, nil
 }
@@ -73,6 +79,8 @@ func simplifyConditions(rulesToSimplify []*rules.Rule) []*rules.Rule {
 				ConsumedFacts: rule.ConsumedFacts,
 			}
 			simplifiedRules = append(simplifiedRules, simplifiedRule)
+			log.Debug().Str("rule", simplifiedRule.Name).Msg("Condition simplified")
+
 		} else {
 			simplifiedRules = append(simplifiedRules, rule)
 		}
@@ -218,6 +226,8 @@ func mergeRules(rulesToMerge []*rules.Rule) ([]*rules.Rule, error) {
 			existingRule.Event.Actions = append(existingRule.Event.Actions, rule.Event.Actions...)
 			existingRule.ProducedFacts = append(existingRule.ProducedFacts, rule.ProducedFacts...)
 			existingRule.ConsumedFacts = append(existingRule.ConsumedFacts, rule.ConsumedFacts...)
+			log.Debug().Str("rule", rule.Name).Msg("Rule merged")
+
 		} else {
 			// If this set of conditions hasn't been seen before, add the rule to the map
 			mergedRules[key] = rule
@@ -243,7 +253,9 @@ func conditionsKey(conds rules.Conditions) (string, error) {
 	// Serialize the normalized conditions to JSON
 	serializedConditions, err := json.Marshal(normalizedConditions)
 	if err != nil {
-		return "", fmt.Errorf("error marshaling conditions: %v", err)
+		log.Error().Err(err).Msg("Error marshaling conditions")
+		return "", err
+
 	}
 
 	// Use SHA256 hashing to create a unique key for the serialized conditions
@@ -292,7 +304,7 @@ func sortConditions(conditions []rules.Condition) ([]rules.Condition, error) {
 		if len(cond.All) > 0 || len(cond.Any) > 0 {
 			sortedNestedConds, err := normalizeConditions(rules.Conditions{All: cond.All, Any: cond.Any})
 			if err != nil {
-				return nil, fmt.Errorf("error sorting conditions: %v", err)
+				log.Error().Err(err).Msg("Error sorting conditions")
 			}
 			conditions[i].All = sortedNestedConds.All
 			conditions[i].Any = sortedNestedConds.Any
