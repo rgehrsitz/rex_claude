@@ -271,7 +271,7 @@ func (c *Compiler) resolveLabelOffsets() error {
 			return fmt.Errorf("label %s not defined", jump.label)
 		}
 
-		placeholderPosition := c.instructions[jump.instructionIndex].BytecodePosition
+		placeholderPosition := c.instructions[jump.instructionIndex].BytecodePosition + 1
 		log.Debug().
 			Str("Label", jump.label).
 			Int("LabelOffset", labelOffset).
@@ -279,8 +279,7 @@ func (c *Compiler) resolveLabelOffsets() error {
 			Msg("Resolving label to bytecode position")
 
 		// Replace placeholder at placeholderPosition with actual labelOffset
-		// binary.LittleEndian.PutUint16(c.bytecode[placeholderPosition:], uint16(labelOffset))
-		binary.LittleEndian.PutUint16(c.bytecode[placeholderPosition:], uint16(labelOffset-placeholderPosition-2))
+		binary.LittleEndian.PutUint16(c.bytecode[placeholderPosition:], uint16(labelOffset-placeholderPosition-1))
 
 	}
 
