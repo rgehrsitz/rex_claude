@@ -16,6 +16,7 @@ import (
 // ParseAndValidateRules now accepts a RuleEngineContext parameter.
 func ParseAndValidateRules(rulesJSON []byte, context *rules.RuleEngineContext) ([]*rules.Rule, error) {
 	// Function implementation remains mostly unchanged
+	log.Info().Msg("Starting the parser")
 	var ruleDefs []json.RawMessage
 	if err := json.Unmarshal(rulesJSON, &ruleDefs); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal rules JSON: %w", err)
