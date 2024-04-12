@@ -152,21 +152,13 @@ func (c *Compiler) compileConditions(conditions rules.Conditions, endLabel strin
 		}
 	}
 
-	for i := range conditions.Any {
-		// Generate a unique label for the action part of the "any" conditions
-		actionLabel := c.generateUniqueLabel("action")
-		// Use the index to obtain a pointer to each condition
-		if err := c.compileCondition(&conditions.Any[i], actionLabel, true); err != nil {
-			return err
+	if len(conditions.Any) > 0 {
+		for i := range conditions.Any {
+			// Use the index to obtain a pointer to each condition
+			if err := c.compileCondition(&conditions.Any[i], endLabel, true); err != nil {
+				return err
+			}
 		}
-		// Emit a jump instruction to skip to the end if the condition is true,
-		// since for "any" conditions, we want to perform the action if any condition is true.
-		c.emitInstruction(JUMP, []byte(endLabel)...)
-		// When emitting a jump instruction related to a label
-		c.jumpsNeedingLabels = append(c.jumpsNeedingLabels, jumpLabelPair{
-			instructionIndex: len(c.instructions) - 1, // Index of the jump instruction just added
-			label:            endLabel,                // The label the jump is associated with
-		})
 	}
 
 	return nil

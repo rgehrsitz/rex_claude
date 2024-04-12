@@ -166,3 +166,294 @@ func TestCompileMultipleConditionsRule(t *testing.T) {
 
 	assert.Equal(t, expectedBytecode, bytecode, "Compiled bytecode does not match the expected sequence")
 }
+
+func TestCompileAnyConditionsRule(t *testing.T) {
+	// Define JSON for a rule with "any" conditions
+	ruleJSON := `[
+		{
+			"name": "VentilationRule",
+			"conditions": {
+				"all": [],
+				"any": [
+					{
+						"fact": "temperature",
+						"operator": "greaterThan",
+						"value": 28,
+						"valueType": "int"
+					},
+					{
+						"fact": "humidity",
+						"operator": "lessThan",
+						"value": 40,
+						"valueType": "int"
+					}
+				]
+			},
+			"event": {
+				"actions": [
+					{
+						"type": "updateFact",
+						"target": "fan_status",
+						"value": true
+					}
+				]
+			},
+			"producedFacts": ["fan_status"],
+			"consumedFacts": ["temperature", "humidity"]
+		}
+	]`
+
+	// Parse the rule JSON into a ruleset
+	var ruleset []*rules.Rule
+	err := json.Unmarshal([]byte(ruleJSON), &ruleset)
+	require.NoError(t, err, "Failed to parse rule JSON")
+
+	// Initialize the RuleEngineContext
+	context := rules.NewRuleEngineContext()
+
+	// Create the compiler instance
+	compiler := NewCompiler(context)
+
+	// Index the facts involved in the rules
+	for _, rule := range ruleset {
+		for _, fact := range rule.ConsumedFacts {
+			if _, exists := context.FactIndex[fact]; !exists {
+				context.FactIndex[fact] = len(context.FactIndex)
+			}
+		}
+		for _, fact := range rule.ProducedFacts {
+			if _, exists := context.FactIndex[fact]; !exists {
+				context.FactIndex[fact] = len(context.FactIndex)
+			}
+		}
+	}
+
+	// Compile the ruleset
+	bytecode, err := compiler.Compile(ruleset)
+	require.NoError(t, err, "Compilation failed")
+
+	// Expected bytecode for "any" conditions
+	expectedBytecode := []byte{
+		17, 0, // LOAD_FACT "temperature"
+		19, 28, 0, 0, 0, // LOAD_CONST_INT 28
+		4,         // GT_INT
+		25, 16, 0, // JUMP_IF_TRUE 16 bytes ahead to end label
+		17, 1, // LOAD_FACT "humidity"
+		19, 40, 0, 0, 0, // LOAD_CONST_INT 40
+		2,        // LT_INT
+		25, 5, 0, // JUMP_IF_TRUE 5 bytes ahead to end label
+		28, 2, // UPDATE_FACT "fan_status"
+		22, 1, // LOAD_CONST_BOOL true
+	}
+
+	assert.Equal(t, expectedBytecode, bytecode, "Compiled bytecode does not match the expected sequence")
+}
+
+func TestCompileNestedConditionsRule(t *testing.T) {
+	// Define JSON for a rule with nested conditions
+	ruleJSON := `[
+		{
+			"name": "NestedConditionsRule",
+			"conditions": {
+				"all": [
+					{
+						"fact": "temperature",
+						"operator": "greaterThan",
+						"value": 25,
+						"valueType": "int"
+					},
+					{
+						"any": [
+							{
+								"fact": "humidity",
+								"operator": "lessThan",
+								"value": 40,
+								"valueType": "int"
+							},
+							{
+								"fact": "room_occupied",
+								"operator": "equal",
+								"value": true,
+								"valueType": "bool"
+							}
+						]
+					}
+				]
+			},
+			"event": {
+				"actions": [
+					{
+						"type": "updateFact",
+						"target": "ac_status",
+						"value": true
+					}
+				]
+			},
+			"producedFacts": ["ac_status"],
+			"consumedFacts": ["temperature", "humidity", "room_occupied"]
+		}
+	]`
+
+	// Parse the rule JSON into a ruleset
+	var ruleset []*rules.Rule
+	err := json.Unmarshal([]byte(ruleJSON), &ruleset)
+	require.NoError(t, err, "Failed to parse rule JSON")
+
+	// Initialize the RuleEngineContext
+	context := rules.NewRuleEngineContext()
+
+	// Create the compiler instance
+	compiler := NewCompiler(context)
+
+	// Index the facts involved in the rules
+	for _, rule := range ruleset {
+		for _, fact := range rule.ConsumedFacts {
+			if _, exists := context.FactIndex[fact]; !exists {
+				context.FactIndex[fact] = len(context.FactIndex)
+			}
+		}
+		for _, fact := range rule.ProducedFacts {
+			if _, exists := context.FactIndex[fact]; !exists {
+				context.FactIndex[fact] = len(context.FactIndex)
+			}
+		}
+	}
+
+	// Compile the ruleset
+	bytecode, err := compiler.Compile(ruleset)
+	require.NoError(t, err, "Compilation failed")
+
+	// Expected bytecode for nested conditions
+	expectedBytecode := []byte{
+		17, 0, // LOAD_FACT "temperature"
+		19, 25, 0, 0, 0, // LOAD_CONST_INT 25
+		4,         // GT_INT
+		26, 27, 0, // JUMP_IF_FALSE 27 bytes ahead to end label
+		17, 1, // LOAD_FACT "humidity"
+		19, 40, 0, 0, 0, // LOAD_CONST_INT 40
+		2,         // LT_INT
+		25, 16, 0, // JUMP_IF_TRUE 16 bytes ahead to action
+		17, 2, // LOAD_FACT "room_occupied"
+		22, 1, // LOAD_CONST_BOOL true
+		0,        // EQ_BOOL
+		25, 8, 0, // JUMP_IF_TRUE 8 bytes ahead to action
+		24, 5, 0, // JUMP 5 bytes ahead to end label
+		28, 3, // UPDATE_FACT "ac_status"
+		22, 1, // LOAD_CONST_BOOL true
+	}
+
+	assert.Equal(t, expectedBytecode, bytecode, "Compiled bytecode does not match the expected sequence")
+}
+
+func TestCompileMultipleRulesWithMixedConditions(t *testing.T) {
+	// Define JSON for multiple rules with mixed conditions
+	ruleJSON := `[
+		{
+			"name": "TemperatureRule",
+			"conditions": {
+				"all": [
+					{
+						"fact": "temperature",
+						"operator": "greaterThan",
+						"value": 30,
+						"valueType": "int"
+					}
+				]
+			},
+			"event": {
+				"actions": [
+					{
+						"type": "updateFact",
+						"target": "ac_status",
+						"value": true
+					}
+				]
+			},
+			"producedFacts": ["ac_status"],
+			"consumedFacts": ["temperature"]
+		},
+		{
+			"name": "HumidityRule",
+			"conditions": {
+				"any": [
+					{
+						"fact": "humidity",
+						"operator": "lessThan",
+						"value": 40,
+						"valueType": "int"
+					},
+					{
+						"fact": "room_occupied",
+						"operator": "equal",
+						"value": true,
+						"valueType": "bool"
+					}
+				]
+			},
+			"event": {
+				"actions": [
+					{
+						"type": "updateFact",
+						"target": "dehumidifier_status",
+						"value": true
+					}
+				]
+			},
+			"producedFacts": ["dehumidifier_status"],
+			"consumedFacts": ["humidity", "room_occupied"]
+		}
+	]`
+
+	// Parse the rule JSON into a ruleset
+	var ruleset []*rules.Rule
+	err := json.Unmarshal([]byte(ruleJSON), &ruleset)
+	require.NoError(t, err, "Failed to parse rule JSON")
+
+	// Initialize the RuleEngineContext
+	context := rules.NewRuleEngineContext()
+
+	// Create the compiler instance
+	compiler := NewCompiler(context)
+
+	// Index the facts involved in the rules
+	for _, rule := range ruleset {
+		for _, fact := range rule.ConsumedFacts {
+			if _, exists := context.FactIndex[fact]; !exists {
+				context.FactIndex[fact] = len(context.FactIndex)
+			}
+		}
+		for _, fact := range rule.ProducedFacts {
+			if _, exists := context.FactIndex[fact]; !exists {
+				context.FactIndex[fact] = len(context.FactIndex)
+			}
+		}
+	}
+
+	// Compile the ruleset
+	bytecode, err := compiler.Compile(ruleset)
+	require.NoError(t, err, "Compilation failed")
+
+	// Expected bytecode for multiple rules with mixed conditions
+	expectedBytecode := []byte{
+		// TemperatureRule
+		17, 0, // LOAD_FACT "temperature"
+		19, 30, 0, 0, 0, // LOAD_CONST_INT 30
+		4,        // GT_INT
+		26, 5, 0, // JUMP_IF_FALSE 5 bytes ahead
+		28, 1, // UPDATE_FACT "ac_status"
+		22, 1, // LOAD_CONST_BOOL true
+		// HumidityRule
+		17, 2, // LOAD_FACT "humidity"
+		19, 40, 0, 0, 0, // LOAD_CONST_INT 40
+		2,         // LT_INT
+		25, 13, 0, // JUMP_IF_TRUE 13 bytes ahead to action
+		17, 3, // LOAD_FACT "room_occupied"
+		22, 1, // LOAD_CONST_BOOL true
+		0,        // EQ_BOOL
+		25, 5, 0, // JUMP_IF_TRUE 5 bytes ahead to action
+		28, 4, // UPDATE_FACT "dehumidifier_status"
+		22, 1, // LOAD_CONST_BOOL true
+	}
+
+	assert.Equal(t, expectedBytecode, bytecode, "Compiled bytecode does not match the expected sequence")
+}
