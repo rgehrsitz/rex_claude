@@ -372,12 +372,38 @@ func (c *Compiler) emitLoadConstantInstruction(value interface{}, valueType stri
 // Adjust getComparisonOpcode to match your operators
 func (c *Compiler) getComparisonOpcode(operator string) Opcode {
 	switch operator {
+	case "equal":
+		return EQ_INT
+	case "notEqual":
+		return NEQ_INT
+	case "lessThan":
+		return LT_INT
+	case "lessThanOrEqual":
+		return LTE_INT
 	case "greaterThan":
-		return GT_INT // Adjust opcode as per your design
+		return GT_INT
 	case "greaterThanOrEqual":
-		return GTE_INT // Adjust opcode as per your design
-	// Add other operators here
+		return GTE_INT
+	case "equalFloat":
+		return EQ_FLOAT
+	case "notEqualFloat":
+		return NEQ_FLOAT
+	case "lessThanFloat":
+		return LT_FLOAT
+	case "lessThanOrEqualFloat":
+		return LTE_FLOAT
+	case "greaterThanFloat":
+		return GT_FLOAT
+	case "greaterThanOrEqualFloat":
+		return GTE_FLOAT
+	case "equalString":
+		return EQ_STRING
+	case "notEqualString":
+		return NEQ_STRING
 	default:
-		return NOP // Or handle unsupported operators as needed
+		log.Error().
+			Str("Operator", operator).
+			Msg("Unsupported comparison operator")
+		return ERROR
 	}
 }
