@@ -237,11 +237,11 @@ func TestCompileAnyConditionsRule(t *testing.T) {
 		17, 0, // LOAD_FACT "temperature"
 		19, 28, 0, 0, 0, // LOAD_CONST_INT 28
 		4,         // GT_INT
-		25, 16, 0, // JUMP_IF_TRUE 16 bytes ahead to end label
+		25, 12, 0, // JUMP_IF_TRUE 12 bytes ahead to action label
 		17, 1, // LOAD_FACT "humidity"
 		19, 40, 0, 0, 0, // LOAD_CONST_INT 40
 		2,        // LT_INT
-		25, 5, 0, // JUMP_IF_TRUE 5 bytes ahead to end label
+		26, 5, 0, // JUMP_IF_FALSE 2 bytes ahead to action label
 		28, 2, // UPDATE_FACT "fan_status"
 		22, 1, // LOAD_CONST_BOOL true
 	}
@@ -328,16 +328,15 @@ func TestCompileNestedConditionsRule(t *testing.T) {
 		17, 0, // LOAD_FACT "temperature"
 		19, 25, 0, 0, 0, // LOAD_CONST_INT 25
 		4,         // GT_INT
-		26, 27, 0, // JUMP_IF_FALSE 27 bytes ahead to end label
+		26, 24, 0, // JUMP_IF_FALSE 24 bytes ahead to end label
 		17, 1, // LOAD_FACT "humidity"
 		19, 40, 0, 0, 0, // LOAD_CONST_INT 40
-		2,         // LT_INT
-		25, 16, 0, // JUMP_IF_TRUE 16 bytes ahead to action
+		2,        // LT_INT
+		25, 9, 0, // JUMP_IF_TRUE 9 bytes ahead to action
 		17, 2, // LOAD_FACT "room_occupied"
 		22, 1, // LOAD_CONST_BOOL true
 		0,        // EQ_BOOL
-		25, 8, 0, // JUMP_IF_TRUE 8 bytes ahead to action
-		24, 5, 0, // JUMP 5 bytes ahead to end label
+		26, 5, 0, // JUMP_IF_FALSE 5 bytes ahead to end
 		28, 3, // UPDATE_FACT "ac_status"
 		22, 1, // LOAD_CONST_BOOL true
 	}
@@ -439,18 +438,18 @@ func TestCompileMultipleRulesWithMixedConditions(t *testing.T) {
 		17, 0, // LOAD_FACT "temperature"
 		19, 30, 0, 0, 0, // LOAD_CONST_INT 30
 		4,        // GT_INT
-		26, 5, 0, // JUMP_IF_FALSE 5 bytes ahead
+		26, 5, 0, // JUMP_IF_FALSE 5 bytes ahead to end
 		28, 1, // UPDATE_FACT "ac_status"
 		22, 1, // LOAD_CONST_BOOL true
 		// HumidityRule
 		17, 2, // LOAD_FACT "humidity"
 		19, 40, 0, 0, 0, // LOAD_CONST_INT 40
-		2,         // LT_INT
-		25, 13, 0, // JUMP_IF_TRUE 13 bytes ahead to action
+		2,        // LT_INT
+		25, 9, 0, // JUMP_IF_TRUE 9 bytes ahead to action
 		17, 3, // LOAD_FACT "room_occupied"
 		22, 1, // LOAD_CONST_BOOL true
 		0,        // EQ_BOOL
-		25, 5, 0, // JUMP_IF_TRUE 5 bytes ahead to action
+		26, 1, 0, // JUMP_IF_FALSE 5 bytes ahead to end
 		28, 4, // UPDATE_FACT "dehumidifier_status"
 		22, 1, // LOAD_CONST_BOOL true
 	}

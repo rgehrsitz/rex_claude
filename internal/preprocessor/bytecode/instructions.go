@@ -72,6 +72,8 @@ const (
 
 	// Label instruction
 	LABEL
+
+	RULE_END // Add this instruction to mark the end of a rule
 )
 
 // hasOperands returns true if the opcode requires operands.
@@ -164,6 +166,8 @@ func (op Opcode) String() string {
 		return "COMPARE_AND_JUMP"
 	case LABEL:
 		return "LABEL"
+	case RULE_END:
+		return "RULE_END"
 	default:
 		return fmt.Sprintf("UNKNOWN_OPCODE(%d)", byte(op))
 	}

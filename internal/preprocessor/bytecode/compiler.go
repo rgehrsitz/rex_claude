@@ -136,6 +136,10 @@ func (c *Compiler) compileRule(rule *rules.Rule) error {
 	}
 
 	c.emitLabel(endLabel)
+
+	// After compiling the rule's conditions and actions
+	c.emitInstruction(RULE_END) // Emit RULE_END at the end of each rule
+
 	log.Info().
 		Int("BytecodeSize", len(c.bytecode)).
 		Msg("Compilation completed successfully")
@@ -152,12 +156,10 @@ func (c *Compiler) compileConditions(conditions rules.Conditions, endLabel strin
 		}
 	}
 
-	if len(conditions.Any) > 0 {
-		for i := range conditions.Any {
-			// Use the index to obtain a pointer to each condition
-			if err := c.compileCondition(&conditions.Any[i], endLabel, true); err != nil {
-				return err
-			}
+	for i := range conditions.Any {
+		// Use the index to obtain a pointer to each condition
+		if err := c.compileCondition(&conditions.Any[i], endLabel, true); err != nil {
+			return err
 		}
 	}
 
