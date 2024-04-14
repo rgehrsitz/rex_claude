@@ -13,7 +13,7 @@ import (
 
 // OptimizeRules optimizes a slice of validated rules.
 // OptimizeRules now also accepts a pointer to RuleEngineContext
-func OptimizeRules(validatedRules []*rules.Rule, context *rules.RuleEngineContext) ([]*rules.Rule, error) {
+func OptimizeRules(validatedRules []*rules.Rule, context *rules.CompilationContext) ([]*rules.Rule, error) {
 	// Optimization logic remains mostly unchanged
 	// You can now utilize 'context' for optimizations
 	// For example, you might adjust optimizations based on the facts each rule consumes or produces
@@ -197,14 +197,6 @@ func equalCondition(c1, c2 rules.Condition) bool {
 		c1.ValueType == c2.ValueType &&
 		reflect.DeepEqual(c1.Value, c2.Value)
 }
-
-// func equalCondition(c1, c2 rules.Condition) bool {
-// 	return c1.Fact == c2.Fact &&
-// 		c1.Operator == c2.Operator &&
-// 		c1.ValueType == c2.ValueType &&
-// 		reflect.DeepEqual(c1.Value, c2.Value) &&
-// 		equalConditions(rules.Conditions{All: c1.All, Any: c1.Any}, rules.Conditions{All: c2.All, Any: c2.Any})
-// }
 
 func precomputeExpressions(rules []*rules.Rule) []*rules.Rule {
 	// Implement precomputation logic here.

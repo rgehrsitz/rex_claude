@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"rgehrsitz/rex/internal/preprocessor"
 	"rgehrsitz/rex/internal/preprocessor/bytecode"
@@ -53,44 +54,65 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to read input file")
 	}
 
-	context := rules.NewRuleEngineContext()
-	validatedRules, err := preprocessor.ParseAndValidateRules(ruleJSON, context)
+	compilationContext := createCompilationContext()
+	compiledBytecode, err := compileRules(ruleJSON, compilationContext)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to parse and validate rules")
+		log.Error().Err(err).Msg("Failed to compile rules")
 		return
 	}
 
-	for _, rule := range validatedRules {
+	err = os.WriteFile("bytecode.bin", compiledBytecode, 0644)
+	if err != nil {
+		log.Error().Err(err).Msg("Error writing bytecode to file")
+		return
+	}
+}
+
+func createCompilationContext() *rules.CompilationContext {
+	return &rules.CompilationContext{
+		FactIndex:     make(map[string]int),
+		ConsumedFacts: make(map[string]bool),
+		ProducedFacts: make(map[string]bool),
+	}
+}
+
+func compileRules(ruleJSON []byte, context *rules.CompilationContext) ([]byte, error) {
+	parsedRules, err := preprocessor.ParseRules(ruleJSON, context)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse rules: %w", err)
+	}
+
+	err = preprocessor.ValidateRules(parsedRules, context)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate rules: %w", err)
+	}
+
+	updateContextWithRuleFacts(parsedRules, context)
+
+	optimizedRules, err := preprocessor.OptimizeRules(parsedRules, context)
+	if err != nil {
+		return nil, fmt.Errorf("failed to optimize rules: %w", err)
+	}
+
+	bytecodeBytes, err := bytecode.Compile(optimizedRules, context)
+	if err != nil {
+		return nil, fmt.Errorf("error compiling rules to bytecode: %w", err)
+	}
+
+	return bytecodeBytes, nil
+}
+
+func updateContextWithRuleFacts(rules []*rules.Rule, context *rules.CompilationContext) {
+	for _, rule := range rules {
 		for _, fact := range rule.ConsumedFacts {
 			if _, exists := context.FactIndex[fact]; !exists {
 				context.FactIndex[fact] = len(context.FactIndex)
-				log.Debug().Msg("Context updated with facts from validated rules")
 			}
 		}
 		for _, fact := range rule.ProducedFacts {
 			if _, exists := context.FactIndex[fact]; !exists {
 				context.FactIndex[fact] = len(context.FactIndex)
-				log.Debug().Msg("Context updated with facts from validated rules")
 			}
 		}
-	}
-
-	optimizedRules, err := preprocessor.OptimizeRules(validatedRules, context)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to optimize rules")
-		return
-	}
-
-	compiler := bytecode.NewCompiler(context)
-	bytecodeBytes, err := compiler.Compile(optimizedRules)
-	if err != nil {
-		log.Error().Err(err).Msg("Error compiling rules to bytecode")
-		return
-	}
-
-	err = os.WriteFile("bytecode.bin", bytecodeBytes, 0644)
-	if err != nil {
-		log.Error().Err(err).Msg("Error writing bytecode to file")
-		return
 	}
 }

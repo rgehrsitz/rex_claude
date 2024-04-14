@@ -73,7 +73,15 @@ const (
 	// Label instruction
 	LABEL
 
+	RULE_START
 	RULE_END // Add this instruction to mark the end of a rule
+
+	COND_START
+	COND_END // Add this instruction to mark the end of a condition
+
+	ACTION_START
+	ACTION_END // Add this instruction to mark the end of an action
+
 )
 
 // hasOperands returns true if the opcode requires operands.
@@ -166,8 +174,18 @@ func (op Opcode) String() string {
 		return "COMPARE_AND_JUMP"
 	case LABEL:
 		return "LABEL"
+	case RULE_START:
+		return "RULE_START"
 	case RULE_END:
 		return "RULE_END"
+	case COND_START:
+		return "COND_START"
+	case COND_END:
+		return "COND_END"
+	case ACTION_START:
+		return "ACTION_START"
+	case ACTION_END:
+		return "ACTION_END"
 	default:
 		return fmt.Sprintf("UNKNOWN_OPCODE(%d)", byte(op))
 	}

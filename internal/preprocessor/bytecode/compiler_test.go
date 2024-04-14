@@ -2,6 +2,7 @@ package bytecode
 
 import (
 	"encoding/json"
+	"rgehrsitz/rex/internal/preprocessor"
 	"rgehrsitz/rex/internal/rules"
 	"testing"
 
@@ -39,18 +40,23 @@ func TestCompileSimpleRule(t *testing.T) {
         }
     ]`
 
-	// Parse the rule JSON
-	var ruleset []*rules.Rule
-	err := json.Unmarshal([]byte(ruleJSON), &ruleset)
-	require.NoError(t, err, "Failed to parse rule JSON")
+	// // Parse the rule JSON
+	// var ruleset []*rules.Rule
+	// err := json.Unmarshal([]byte(ruleJSON), &ruleset)
+	// require.NoError(t, err, "Failed to parse rule JSON")
 
 	// Initialize the RuleEngineContext
 	context := rules.NewRuleEngineContext()
 
 	// Create the compiler instance
-	compiler := NewCompiler(context)
+	//compiler := NewCompiler(context)
 
-	// After parsing the rules into validatedRules and before compiling:
+	ruleset, err := preprocessor.ParseRules([]byte(ruleJSON), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	//After parsing the rules into validatedRules and before compiling:
 	for _, rule := range ruleset {
 		for _, fact := range rule.ConsumedFacts {
 			if _, exists := context.FactIndex[fact]; !exists {
@@ -65,7 +71,7 @@ func TestCompileSimpleRule(t *testing.T) {
 	}
 
 	// Compile the ruleset
-	bytecode, err := compiler.Compile(ruleset)
+	bytecode, err := Compile(ruleset, context)
 	require.NoError(t, err, "Compilation failed")
 
 	// Assert that the bytecode is not nil or empty
@@ -130,7 +136,7 @@ func TestCompileMultipleConditionsRule(t *testing.T) {
 	context := rules.NewRuleEngineContext()
 
 	// Create the compiler instance
-	compiler := NewCompiler(context)
+	//compiler := NewCompiler(context)
 
 	// Index the facts involved in the rules
 	for _, rule := range ruleset {
@@ -147,7 +153,7 @@ func TestCompileMultipleConditionsRule(t *testing.T) {
 	}
 
 	// Compile the ruleset
-	bytecode, err := compiler.Compile(ruleset)
+	bytecode, err := Compile(ruleset, context)
 	require.NoError(t, err, "Compilation failed")
 
 	// Expected bytecode for multiple conditions
@@ -212,7 +218,7 @@ func TestCompileAnyConditionsRule(t *testing.T) {
 	context := rules.NewRuleEngineContext()
 
 	// Create the compiler instance
-	compiler := NewCompiler(context)
+	//compiler := NewCompiler(context)
 
 	// Index the facts involved in the rules
 	for _, rule := range ruleset {
@@ -229,7 +235,7 @@ func TestCompileAnyConditionsRule(t *testing.T) {
 	}
 
 	// Compile the ruleset
-	bytecode, err := compiler.Compile(ruleset)
+	bytecode, err := Compile(ruleset, context)
 	require.NoError(t, err, "Compilation failed")
 
 	// Expected bytecode for "any" conditions
@@ -303,7 +309,7 @@ func TestCompileNestedConditionsRule(t *testing.T) {
 	context := rules.NewRuleEngineContext()
 
 	// Create the compiler instance
-	compiler := NewCompiler(context)
+	//compiler := NewCompiler(context)
 
 	// Index the facts involved in the rules
 	for _, rule := range ruleset {
@@ -320,7 +326,7 @@ func TestCompileNestedConditionsRule(t *testing.T) {
 	}
 
 	// Compile the ruleset
-	bytecode, err := compiler.Compile(ruleset)
+	bytecode, err := Compile(ruleset, context)
 	require.NoError(t, err, "Compilation failed")
 
 	// Expected bytecode for nested conditions
@@ -412,7 +418,7 @@ func TestCompileMultipleRulesWithMixedConditions(t *testing.T) {
 	context := rules.NewRuleEngineContext()
 
 	// Create the compiler instance
-	compiler := NewCompiler(context)
+	//compiler := NewCompiler(context)
 
 	// Index the facts involved in the rules
 	for _, rule := range ruleset {
@@ -429,7 +435,7 @@ func TestCompileMultipleRulesWithMixedConditions(t *testing.T) {
 	}
 
 	// Compile the ruleset
-	bytecode, err := compiler.Compile(ruleset)
+	bytecode, err := Compile(ruleset, context)
 	require.NoError(t, err, "Compilation failed")
 
 	// Expected bytecode for multiple rules with mixed conditions

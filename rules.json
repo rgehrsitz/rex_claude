@@ -6,11 +6,9 @@
         {
           "fact": "temperature",
           "operator": "greaterThan",
-          "value": 30,
-          "valueType": "int"
+          "value": 30
         }
-      ],
-      "any": []
+      ]
     },
     "event": {
       "actions": [
@@ -20,8 +18,6 @@
           "value": true
         }
       ]
-    },
-    "producedFacts": ["ac_status"],
-    "consumedFacts": ["temperature"]
+    }
   }
 ]

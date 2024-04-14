@@ -21,7 +21,10 @@
             "mode": "auto",
             "program": "${fileDirname}",
             "args": [
-                "-input .\\..\\..\\rules.json"
+                "-input",
+                ".\\..\\..\\rules.json",
+                "-loglevel",
+                "trace"
             ]
         }
     ]
